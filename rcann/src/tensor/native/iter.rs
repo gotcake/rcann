@@ -28,7 +28,10 @@ impl<'a, T: DType> Iterator for TensorIter<'a, T> {
             unsafe {
                 let (chunk, rest) = self.rest.split_at_unchecked(self.stride);
                 self.rest = rest;
-                Some(TensorView::from_slice_unchecked(chunk, self.out_dims.clone()))
+                Some(TensorView::from_slice_unchecked(
+                    chunk,
+                    self.out_dims.clone(),
+                ))
             }
         }
     }
@@ -65,7 +68,10 @@ impl<'a, T: 'a + DType> Iterator for TensorIterMut<'a, T> {
                 let chunk = std::slice::from_raw_parts_mut(ptr, self.stride);
                 let rest_len = self.rest.len() - self.stride;
                 self.rest = std::slice::from_raw_parts_mut(ptr.add(self.stride), rest_len);
-                Some(TensorViewMut::from_slice_unchecked(chunk, self.out_dims.clone()))
+                Some(TensorViewMut::from_slice_unchecked(
+                    chunk,
+                    self.out_dims.clone(),
+                ))
             }
         }
     }

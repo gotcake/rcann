@@ -1,20 +1,20 @@
+use super::math::{compute_jacobian_matrix, DTypeOps};
+use crate::backend::Backend;
+use crate::tensor::{Dims, ITensor, ITensorBase, Tensor, TensorBase, TensorBaseMut};
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter, Write};
 use std::iter::zip;
 use std::ops::{Deref, DerefMut};
-use crate::backend::Backend;
-use super::math::{DTypeOps, compute_jacobian_matrix};
-use crate::tensor::{Tensor, TensorBase, TensorBaseMut, Dims, ITensorBase, ITensor};
 
 pub struct CpuBackend<DT: DTypeOps> {
-    temp_matrix: RefCell<Tensor<DT>>
+    temp_matrix: RefCell<Tensor<DT>>,
 }
 
 impl<DT: DTypeOps> CpuBackend<DT> {
     pub fn new() -> Self {
         CpuBackend {
-            temp_matrix: RefCell::new(Tensor::empty())
+            temp_matrix: RefCell::new(Tensor::empty()),
         }
     }
 }
@@ -29,15 +29,34 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
     }
 
     #[inline]
-    fn new_tensor_from_native<T>(&self, native: T) -> Self::Tensor where T: TensorBase<Self::DType> {
+    fn new_tensor_from_native<T>(&self, native: T) -> Self::Tensor
+    where
+        T: TensorBase<Self::DType>,
+    {
         native.into_owned()
     }
 
-    fn matmul(&self, alpha: DT, a: &Self::Tensor, ta: bool, b: &Self::Tensor, tb: bool, beta: DT, c: &mut Self::Tensor, tc: bool) {
+    fn matmul(
+        &self,
+        alpha: DT,
+        a: &Self::Tensor,
+        ta: bool,
+        b: &Self::Tensor,
+        tb: bool,
+        beta: DT,
+        c: &mut Self::Tensor,
+        tc: bool,
+    ) {
         DT::matrix_multiply(alpha, a, ta, b, tb, beta, c, tc);
     }
 
-    fn column_sum(&self, alpha: Self::DType, a: &Self::Tensor, beta: Self::DType, b: &mut Self::Tensor) {
+    fn column_sum(
+        &self,
+        alpha: Self::DType,
+        a: &Self::Tensor,
+        beta: Self::DType,
+        b: &mut Self::Tensor,
+    ) {
         let (rows, cols) = a.dims().unwrap_2d();
         assert_eq!(b.dims(), &Dims::D1(cols));
         let pa = a.as_ptr();
@@ -57,7 +76,13 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
     }
 
     // TODO: implement specialized versions of this
-    fn add_assign(&self, alpha: Self::DType, a: &Self::Tensor, beta: Self::DType, b: &mut Self::Tensor) {
+    fn add_assign(
+        &self,
+        alpha: Self::DType,
+        a: &Self::Tensor,
+        beta: Self::DType,
+        b: &mut Self::Tensor,
+    ) {
         assert_eq!(a.dims(), b.dims());
         for (&ai, bi) in zip(a, b) {
             *bi = alpha * ai + beta * *bi;
@@ -71,7 +96,12 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
         }
     }
 
-    fn sigmoid_error(&self, output: &Self::Tensor, out_error: &Self::Tensor, result: &mut Self::Tensor) {
+    fn sigmoid_error(
+        &self,
+        output: &Self::Tensor,
+        out_error: &Self::Tensor,
+        result: &mut Self::Tensor,
+    ) {
         assert_eq!(output.dims(), result.dims());
         assert_eq!(output.dims(), out_error.dims());
         for ((r, &out), &err) in zip(zip(result, output), out_error) {
@@ -86,7 +116,13 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
         }
     }
 
-    fn relu_error(&self, leak: DT, activation: &Self::Tensor, out_error: &Self::Tensor, result: &mut Self::Tensor) {
+    fn relu_error(
+        &self,
+        leak: DT,
+        activation: &Self::Tensor,
+        out_error: &Self::Tensor,
+        result: &mut Self::Tensor,
+    ) {
         assert_eq!(activation.dims(), result.dims());
         assert_eq!(activation.dims(), out_error.dims());
         for ((r, &act), &err) in zip(zip(result, activation), out_error) {
@@ -97,9 +133,20 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
     fn softmax(&self, activation: &Self::Tensor, output: &mut Self::Tensor) {
         assert_eq!(activation.dims().len(), 2);
         assert_eq!(activation.dims(), output.dims());
-        for (mut output_row, activation_row) in zip(output.iter_first_axis_mut(), activation.iter_first_axis()) {
+        for (mut output_row, activation_row) in
+            zip(output.iter_first_axis_mut(), activation.iter_first_axis())
+        {
             // shift the values by -max(inputs) to prevent overflow (does not affect derivative)
-            let max = *activation_row.iter().max_by(|&a, &b| if a > b { Ordering::Greater } else { Ordering::Less }).unwrap();
+            let max = *activation_row
+                .iter()
+                .max_by(|&a, &b| {
+                    if a > b {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Less
+                    }
+                })
+                .unwrap();
             let mut sum = DT::ZERO;
             for (t, &a) in zip(output_row.iter_mut(), activation_row) {
                 let x = (a - max).exp();
@@ -112,12 +159,20 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
         }
     }
 
-    fn softmax_error(&self, output: &Self::Tensor, out_error: &Self::Tensor, result: &mut Self::Tensor) {
+    fn softmax_error(
+        &self,
+        output: &Self::Tensor,
+        out_error: &Self::Tensor,
+        result: &mut Self::Tensor,
+    ) {
         let (_, size) = output.dims().unwrap_2d();
         assert_eq!(output.dims(), result.dims());
         let mut temp = self.temp_matrix.borrow_mut();
         temp.resize((size, size));
-        for (mut result_row, (output_row, out_err_row)) in zip(result.iter_first_axis_mut(), zip(output.iter_first_axis(), out_error.iter_first_axis())) {
+        for (mut result_row, (output_row, out_err_row)) in zip(
+            result.iter_first_axis_mut(),
+            zip(output.iter_first_axis(), out_error.iter_first_axis()),
+        ) {
             compute_jacobian_matrix(&output_row, temp.deref_mut());
             DT::matrix_multiply(
                 DT::ONE,
@@ -127,17 +182,28 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
                 false,
                 DT::ZERO,
                 &mut result_row.as_row_matrix_2d_mut(),
-                false
+                false,
             );
         }
     }
 
-
-    fn mean_squared_error(&self, output: &Self::Tensor, expected: &Self::Tensor, result: &mut Self::Tensor, result_deriv: &mut Self::Tensor) {
+    fn mean_squared_error(
+        &self,
+        output: &Self::Tensor,
+        expected: &Self::Tensor,
+        result: &mut Self::Tensor,
+        result_deriv: &mut Self::Tensor,
+    ) {
         debug_assert_eq!(Some(output.dims().first()), result.dims().as_1d());
         debug_assert_eq!(output.dims(), expected.dims());
         debug_assert_eq!(output.dims(), result_deriv.dims());
-        for (r, (rd_row, (o_row, e_row))) in zip(result, zip(result_deriv.iter_first_axis_mut(), zip(output.iter_first_axis(), expected.iter_first_axis()))) {
+        for (r, (rd_row, (o_row, e_row))) in zip(
+            result,
+            zip(
+                result_deriv.iter_first_axis_mut(),
+                zip(output.iter_first_axis(), expected.iter_first_axis()),
+            ),
+        ) {
             let mut sum_error = DT::ZERO;
             let count = DT::from_usize(rd_row.len());
             for (rd, (&o, &e)) in zip(rd_row, zip(o_row, e_row)) {
@@ -148,7 +214,6 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
             *r = sum_error / count;
         }
     }
-
 }
 
 impl<DT: DTypeOps> Debug for CpuBackend<DT> {

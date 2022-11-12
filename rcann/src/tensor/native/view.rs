@@ -1,10 +1,10 @@
-use std::ops::{Deref, DerefMut};
-use std::slice::{Iter, IterMut};
+use super::base::{TensorBase, TensorBaseMut};
+use super::tensor::Tensor;
 use crate::dtype::DType;
 use crate::impl_tensor_debug;
-use super::base::{TensorBase, TensorBaseMut};
 use crate::tensor::{Dims, ITensorBase};
-use super::tensor::Tensor;
+use std::ops::{Deref, DerefMut};
+use std::slice::{Iter, IterMut};
 
 pub struct TensorView<'a, T> {
     data: &'a [T],
@@ -14,19 +14,19 @@ pub struct TensorView<'a, T> {
 impl<'a, T> TensorView<'a, T> {
     pub fn from_slice<D: Into<Dims>>(data: &'a [T], dim: D) -> Self {
         let dim = dim.into();
-        assert_eq!(data.len(), dim.tensor_len(), "Mismatched data length {} and dimension {:?}", data.len(), dim);
-        TensorView {
-            data,
-            dims: dim
-        }
+        assert_eq!(
+            data.len(),
+            dim.tensor_len(),
+            "Mismatched data length {} and dimension {:?}",
+            data.len(),
+            dim
+        );
+        TensorView { data, dims: dim }
     }
     #[inline]
     pub(super) unsafe fn from_slice_unchecked(data: &'a [T], dim: Dims) -> Self {
         debug_assert_eq!(data.len(), dim.tensor_len());
-        TensorView {
-            data,
-            dims: dim
-        }
+        TensorView { data, dims: dim }
     }
 }
 
@@ -82,7 +82,6 @@ impl<'a, T> IntoIterator for TensorView<'a, T> {
 
 impl_tensor_debug!(TensorView, 'a);
 
-
 pub struct TensorViewMut<'a, T> {
     data: &'a mut [T],
     dims: Dims,
@@ -102,19 +101,19 @@ impl<'a, T: DType> ITensorBase<T> for TensorViewMut<'a, T> {
 impl<'a, T> TensorViewMut<'a, T> {
     pub fn from_slice<D: Into<Dims>>(data: &'a mut [T], dim: D) -> Self {
         let dim = dim.into();
-        assert_eq!(data.len(), dim.tensor_len(), "Mismatched data length {} and dimension {:?}", data.len(), dim);
-        TensorViewMut {
-            data,
-            dims: dim
-        }
+        assert_eq!(
+            data.len(),
+            dim.tensor_len(),
+            "Mismatched data length {} and dimension {:?}",
+            data.len(),
+            dim
+        );
+        TensorViewMut { data, dims: dim }
     }
     #[inline]
     pub(super) unsafe fn from_slice_unchecked(data: &'a mut [T], dim: Dims) -> Self {
         debug_assert_eq!(data.len(), dim.tensor_len());
-        TensorViewMut {
-            data,
-            dims: dim
-        }
+        TensorViewMut { data, dims: dim }
     }
 }
 
@@ -125,7 +124,6 @@ impl<'a, T> Deref for TensorViewMut<'a, T> {
         &self.data
     }
 }
-
 
 impl<'a, T: DType> TensorBase<T> for TensorViewMut<'a, T> {
     #[inline]

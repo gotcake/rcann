@@ -1,12 +1,12 @@
-mod fully_connected;
 mod concrete;
+mod fully_connected;
 
-use std::fmt::Debug;
 use crate::backend::Backend;
 use crate::net::initializer::NetInitializer;
+use std::fmt::Debug;
 
-pub use fully_connected::{FullyConnectedLayerParams, FullyConnectedLayer};
-pub use concrete::{ConcreteLayerParams, ConcreteLayer};
+pub use concrete::{ConcreteLayer, ConcreteLayerParams};
+pub use fully_connected::{FullyConnectedLayer, FullyConnectedLayerParams};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum LayerType {
@@ -14,7 +14,6 @@ pub enum LayerType {
 }
 
 pub trait LayerParams<B: Backend>: Clone + Debug {
-
     type Layer: Layer<B>;
 
     fn create_layer(
@@ -22,19 +21,12 @@ pub trait LayerParams<B: Backend>: Clone + Debug {
         backend: &B,
         layer_idx: usize,
         input_size: usize,
-        initializer: &mut dyn NetInitializer<B::DType>
+        initializer: &mut dyn NetInitializer<B::DType>,
     ) -> Self::Layer;
-
 }
 
 pub trait Layer<B: Backend>: Debug {
-
-    fn forward(
-        &mut self,
-        backend: &B,
-        input: &B::Tensor,
-        output: &mut B::Tensor,
-    );
+    fn forward(&mut self, backend: &B, input: &B::Tensor, output: &mut B::Tensor);
 
     fn backprop(
         &mut self,
@@ -49,8 +41,4 @@ pub trait Layer<B: Backend>: Debug {
 
     fn input_size(&self) -> usize;
     fn output_size(&self) -> usize;
-
 }
-
-
-

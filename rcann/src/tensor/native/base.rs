@@ -1,8 +1,10 @@
-use std::ops::{Deref, DerefMut};
 use crate::dtype::DType;
-use crate::tensor::{ITensorBase, TensorView, TensorViewMut, Tensor, TensorIter, TensorIterMut, Dims};
+use crate::tensor::{
+    Dims, ITensorBase, Tensor, TensorIter, TensorIterMut, TensorView, TensorViewMut,
+};
+use std::ops::{Deref, DerefMut};
 
-pub trait TensorBase<T: DType>: ITensorBase<T> + Deref<Target=[T]> {
+pub trait TensorBase<T: DType>: ITensorBase<T> + Deref<Target = [T]> {
     fn is_owned(&self) -> bool;
     fn into_owned(self) -> Tensor<T>;
     fn into_vec(self) -> Vec<T>;
@@ -42,7 +44,7 @@ pub trait TensorBase<T: DType>: ITensorBase<T> + Deref<Target=[T]> {
     }*/
 }
 
-pub trait TensorBaseMut<T: DType>: TensorBase<T> + DerefMut<Target=[T]> {
+pub trait TensorBaseMut<T: DType>: TensorBase<T> + DerefMut<Target = [T]> {
     #[inline]
     fn view_mut(&mut self) -> TensorViewMut<T> {
         let dims = self.dims().clone();

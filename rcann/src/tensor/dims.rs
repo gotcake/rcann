@@ -10,7 +10,6 @@ pub enum Dims {
 }
 
 impl Dims {
-
     pub fn len(&self) -> usize {
         use Dims::*;
         match self {
@@ -55,7 +54,7 @@ impl Dims {
         use Dims::*;
         match self {
             D0 => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -63,7 +62,7 @@ impl Dims {
         use Dims::*;
         match self {
             D1(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -71,7 +70,7 @@ impl Dims {
         use Dims::*;
         match self {
             D2(_, _) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -79,7 +78,7 @@ impl Dims {
         use Dims::*;
         match self {
             D3(_, _, _) => true,
-            _ => false
+            _ => false,
         }
     }
 
@@ -87,7 +86,7 @@ impl Dims {
         use Dims::*;
         match self {
             &D1(a) => Some(a),
-            _ => None
+            _ => None,
         }
     }
 
@@ -104,7 +103,7 @@ impl Dims {
         use Dims::*;
         match self {
             &D2(a, b) => Some((a, b)),
-            _ => None
+            _ => None,
         }
     }
 
@@ -121,7 +120,7 @@ impl Dims {
         use Dims::*;
         match self {
             &D3(a, b, c) => Some((a, b, c)),
-            _ => None
+            _ => None,
         }
     }
 
@@ -162,7 +161,6 @@ impl Dims {
             &D3(_, b, c) => b * c,
         }
     }
-
 }
 
 impl Into<Dims> for usize {
@@ -207,7 +205,7 @@ impl Index<usize> for Dims {
             (D3(a, _, _), 0) => a,
             (D3(_, b, _), 1) => b,
             (D3(_, _, c), 2) => c,
-            _ => panic!("Invalid index {} for {:?}", index, self)
+            _ => panic!("Invalid index {} for {:?}", index, self),
         }
     }
 }

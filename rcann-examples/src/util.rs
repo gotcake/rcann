@@ -1,8 +1,8 @@
-use std::cmp::Ordering;
-use std::iter::zip;
 use mnist::{Mnist, MnistBuilder};
 use rcann::dtype::DType;
 use rcann::tensor::Tensor;
+use std::cmp::Ordering;
+use std::iter::zip;
 
 const IMAGE_PIXELS: usize = 28 * 28;
 const NUM_CLASSES: usize = 10;
@@ -15,9 +15,8 @@ pub struct MnistData<D: DType> {
 pub fn load_mnist_data<D: DType>(
     train_samples: usize,
     test_samples: usize,
-    batch_size: usize
+    batch_size: usize,
 ) -> MnistData<D> {
-
     let Mnist {
         trn_img,
         trn_lbl,
@@ -35,21 +34,37 @@ pub fn load_mnist_data<D: DType>(
     assert_eq!(tst_img.len(), test_samples * IMAGE_PIXELS);
     assert_eq!(tst_lbl.len(), test_samples * NUM_CLASSES);
 
-
     MnistData {
         train: zip(
-            get_batches(trn_img, IMAGE_PIXELS, batch_size, |p| D::from_f64(p as f64 / 256.0)),
-            get_batches(trn_lbl, NUM_CLASSES, batch_size, |l| D::from_usize(l as usize)),
-        ).collect(),
+            get_batches(trn_img, IMAGE_PIXELS, batch_size, |p| {
+                D::from_f64(p as f64 / 256.0)
+            }),
+            get_batches(trn_lbl, NUM_CLASSES, batch_size, |l| {
+                D::from_usize(l as usize)
+            }),
+        )
+        .collect(),
         test: zip(
-            get_batches(tst_img, IMAGE_PIXELS, batch_size, |p| D::from_f64(p as f64 / 256.0)),
-            get_batches(tst_lbl, NUM_CLASSES, batch_size, |l| D::from_usize(l as usize)),
-        ).collect(),
+            get_batches(tst_img, IMAGE_PIXELS, batch_size, |p| {
+                D::from_f64(p as f64 / 256.0)
+            }),
+            get_batches(tst_lbl, NUM_CLASSES, batch_size, |l| {
+                D::from_usize(l as usize)
+            }),
+        )
+        .collect(),
     }
-
 }
 
-fn get_batches<I: Copy, O, F>(raw: Vec<I>, sample_size: usize, batch_size: usize, f: F) -> Vec<Tensor<O>> where F: Fn(I) -> O {
+fn get_batches<I: Copy, O, F>(
+    raw: Vec<I>,
+    sample_size: usize,
+    batch_size: usize,
+    f: F,
+) -> Vec<Tensor<O>>
+where
+    F: Fn(I) -> O,
+{
     assert_eq!(raw.len() % sample_size, 0);
     raw.chunks(sample_size * batch_size)
         .map(|chunk| {
@@ -70,5 +85,6 @@ pub fn max_index<T: Copy + PartialOrd>(a: &[T]) -> usize {
                 Ordering::Greater
             }
         })
-        .expect("expected at least one element").0
+        .expect("expected at least one element")
+        .0
 }

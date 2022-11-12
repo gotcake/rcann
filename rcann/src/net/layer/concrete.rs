@@ -1,7 +1,7 @@
-use std::fmt::{Debug, Formatter};
+use super::{FullyConnectedLayer, FullyConnectedLayerParams, Layer, LayerParams};
 use crate::backend::Backend;
 use crate::net::initializer::NetInitializer;
-use super::{Layer, LayerParams, FullyConnectedLayerParams, FullyConnectedLayer};
+use std::fmt::{Debug, Formatter};
 
 // This is needed because we can't put dyn LayerParam in a Box :(
 // Much sad :(
@@ -9,7 +9,7 @@ use super::{Layer, LayerParams, FullyConnectedLayerParams, FullyConnectedLayer};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConcreteLayerParams {
-    FullyConnected(FullyConnectedLayerParams)
+    FullyConnected(FullyConnectedLayerParams),
 }
 
 impl<B: Backend> LayerParams<B> for ConcreteLayerParams {
@@ -19,13 +19,12 @@ impl<B: Backend> LayerParams<B> for ConcreteLayerParams {
         backend: &B,
         layer_idx: usize,
         input_size: usize,
-        initializer: &mut dyn NetInitializer<B::DType>
+        initializer: &mut dyn NetInitializer<B::DType>,
     ) -> Self::Layer {
         match self {
-            ConcreteLayerParams::FullyConnected(params) =>
-                ConcreteLayer::FullyConnected(
-                    params.create_layer(backend, layer_idx, input_size, initializer)
-                ),
+            ConcreteLayerParams::FullyConnected(params) => ConcreteLayer::FullyConnected(
+                params.create_layer(backend, layer_idx, input_size, initializer),
+            ),
         }
     }
 }
@@ -47,14 +46,8 @@ impl<B: Backend> ConcreteLayer<B> {
     }
 }
 
-
 impl<B: Backend> Layer<B> for ConcreteLayer<B> {
-    fn forward(
-        &mut self,
-        backend: &B,
-        input: &B::Tensor,
-        output: &mut B::Tensor
-    ) {
+    fn forward(&mut self, backend: &B, input: &B::Tensor, output: &mut B::Tensor) {
         self.inner_mut().forward(backend, input, output)
     }
 

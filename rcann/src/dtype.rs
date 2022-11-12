@@ -1,8 +1,10 @@
-use std::fmt::{LowerExp};
+use num_traits::{Float, FloatConst, NumAssignOps, NumCast, NumOps, One, Zero};
+use std::fmt::LowerExp;
 use std::ops::Neg;
-use num_traits::{Float, NumAssignOps, NumOps, One, Zero, FloatConst, NumCast};
 
-pub trait DType: 'static + Float + FloatConst + NumOps + NumAssignOps + One + Zero + Neg + NumCast + LowerExp {
+pub trait DType:
+    'static + Float + FloatConst + NumOps + NumAssignOps + One + Zero + Neg + NumCast + LowerExp
+{
     const ZERO: Self;
     const ONE: Self;
     fn from_f64(val: f64) -> Self;

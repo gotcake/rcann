@@ -1,14 +1,14 @@
-use std::fmt::{Debug, Formatter};
-use std::iter::zip;
-use crate::backend::{Backend};
+use crate::backend::Backend;
 use crate::loss::LossFn;
 use crate::net::initializer::{NetInitializer, RandomNetInitializer};
-use crate::tensor::{Dims, ITensorBase};
 use crate::net::layer::{ConcreteLayer, ConcreteLayerParams, Layer, LayerParams};
-use crate::tensor::{ITensor};
+use crate::tensor::ITensor;
+use crate::tensor::{Dims, ITensorBase};
+use std::fmt::{Debug, Formatter};
+use std::iter::zip;
 
-pub mod layer;
 pub mod initializer;
+pub mod layer;
 
 pub struct Net<B: Backend> {
     backend: B,
@@ -26,9 +26,7 @@ pub struct Net<B: Backend> {
     output_error_deriv_buff: B::Tensor,
 }
 
-
 impl<B: Backend> Net<B> {
-
     fn new(
         backend: B,
         first: ConcreteLayer<B>,
@@ -36,9 +34,15 @@ impl<B: Backend> Net<B> {
         last: ConcreteLayer<B>,
     ) -> Self {
         let first_output = backend.new_tensor((0, first.output_size()));
-        let hidden_outputs = hidden.iter().map(|l| backend.new_tensor((0, l.output_size()))).collect();
+        let hidden_outputs = hidden
+            .iter()
+            .map(|l| backend.new_tensor((0, l.output_size())))
+            .collect();
         let last_output = backend.new_tensor((0, last.output_size()));
-        let hidden_input_error = hidden.iter().map(|l| backend.new_tensor((0, l.input_size()))).collect();
+        let hidden_input_error = hidden
+            .iter()
+            .map(|l| backend.new_tensor((0, l.input_size())))
+            .collect();
         let last_input_error = backend.new_tensor((0, last.input_size()));
         let output_error_buff = backend.new_tensor(0);
         let output_error_deriv_buff = backend.new_tensor((0, last.output_size()));
@@ -59,7 +63,11 @@ impl<B: Backend> Net<B> {
 
     pub fn predict(&mut self, input: &B::Tensor) -> &B::Tensor {
         let num_rows = input.dims().first();
-        assert_eq!(input.dims(), &Dims::D2(num_rows, self.input_size()), "Invalid dimensions for input tensor");
+        assert_eq!(
+            input.dims(),
+            &Dims::D2(num_rows, self.input_size()),
+            "Invalid dimensions for input tensor"
+        );
         self.forward(num_rows, input);
         &self.last_output
     }
@@ -72,52 +80,45 @@ impl<B: Backend> Net<B> {
         learn_rate: B::DType,
         momentum: B::DType,
     ) -> TrainBatchResult<B> {
-
         let num_rows = input.dims().first();
         let input_size = self.input_size();
         let output_size = self.output_size();
 
-        assert_eq!(input.dims(), &Dims::D2(num_rows, input_size), "Invalid dimensions for input tensor");
-        assert_eq!(expected.dims(), &Dims::D2(num_rows, output_size), "Invalid dimensions for expected tensor");
+        assert_eq!(
+            input.dims(),
+            &Dims::D2(num_rows, input_size),
+            "Invalid dimensions for input tensor"
+        );
+        assert_eq!(
+            expected.dims(),
+            &Dims::D2(num_rows, output_size),
+            "Invalid dimensions for expected tensor"
+        );
 
         self.forward(num_rows, input);
-        self.backprop(
-            num_rows,
-            input,
-            expected,
-            &loss,
-            learn_rate,
-            momentum,
-        );
+        self.backprop(num_rows, input, expected, &loss, learn_rate, momentum);
 
         TrainBatchResult {
             output: &self.last_output,
             error: &self.output_error_buff,
         }
-
     }
 
     fn forward(&mut self, num_rows: usize, input: &B::Tensor) {
         self.first_output.resize_first_dim(num_rows);
-        self.first.forward(
-            &self.backend,
-            input,
-            &mut self.first_output
-        );
+        self.first
+            .forward(&self.backend, input, &mut self.first_output);
 
         let mut input = &self.first_output;
         for (layer, output) in zip(self.hidden.iter_mut(), self.hidden_outputs.iter_mut()) {
             output.resize_first_dim(num_rows);
-            layer.forward(
-                &self.backend,
-                input,
-                output,
-            );
+            layer.forward(&self.backend, input, output);
             input = output;
         }
 
         self.last_output.resize_first_dim(num_rows);
-        self.last.forward(&self.backend, input, &mut self.last_output);
+        self.last
+            .forward(&self.backend, input, &mut self.last_output);
     }
 
     fn backprop(
@@ -129,7 +130,6 @@ impl<B: Backend> Net<B> {
         learn_rate: B::DType,
         momentum: B::DType,
     ) {
-
         self.output_error_buff.resize(num_rows);
         self.output_error_deriv_buff.resize_first_dim(num_rows);
         loss.compute(
@@ -157,8 +157,21 @@ impl<B: Backend> Net<B> {
         );
 
         let mut output_error = &self.last_input_error;
-        for (i, (layer, (output, input_error))) in zip(self.hidden.iter_mut(), zip(self.hidden_outputs.iter(), self.hidden_input_error.iter_mut())).enumerate().rev() {
-            let layer_input = if i == 0 { &self.first_output } else { &self.hidden_outputs[i-1] };
+        for (i, (layer, (output, input_error))) in zip(
+            self.hidden.iter_mut(),
+            zip(
+                self.hidden_outputs.iter(),
+                self.hidden_input_error.iter_mut(),
+            ),
+        )
+        .enumerate()
+        .rev()
+        {
+            let layer_input = if i == 0 {
+                &self.first_output
+            } else {
+                &self.hidden_outputs[i - 1]
+            };
             input_error.resize_first_dim(num_rows);
             layer.backprop(
                 &self.backend,
@@ -167,7 +180,7 @@ impl<B: Backend> Net<B> {
                 Some(input_error),
                 output_error,
                 learn_rate,
-                momentum
+                momentum,
             );
             output_error = input_error;
         }
@@ -179,9 +192,8 @@ impl<B: Backend> Net<B> {
             None,
             output_error,
             learn_rate,
-            momentum
+            momentum,
         )
-
     }
 
     #[inline]
@@ -193,7 +205,6 @@ impl<B: Backend> Net<B> {
     pub fn output_size(&self) -> usize {
         self.last.output_size()
     }
-
 }
 
 pub struct NetBuilder<B: Backend> {
@@ -204,21 +215,26 @@ pub struct NetBuilder<B: Backend> {
 }
 
 impl<B: Backend> NetBuilder<B> {
-
     pub fn new(backend: B, input_size: usize) -> Self {
         NetBuilder {
             backend,
             input_size,
             initializer: Box::new(RandomNetInitializer::default()),
-            layers: Vec::new()
+            layers: Vec::new(),
         }
     }
-    pub fn with_initializer<I>(mut self, initializer: I) -> Self where I: 'static + NetInitializer<B::DType> {
+    pub fn with_initializer<I>(mut self, initializer: I) -> Self
+    where
+        I: 'static + NetInitializer<B::DType>,
+    {
         self.initializer = Box::new(initializer);
         self
     }
 
-    pub fn with_layer<T>(mut self, layer: T) -> Self where T: Into<ConcreteLayerParams> {
+    pub fn with_layer<T>(mut self, layer: T) -> Self
+    where
+        T: Into<ConcreteLayerParams>,
+    {
         self.layers.push(layer.into());
         self
     }
@@ -233,9 +249,9 @@ impl<B: Backend> NetBuilder<B> {
                 &self.backend,
                 0,
                 self.input_size,
-                self.initializer.as_mut()
+                self.initializer.as_mut(),
             );
-            let mut hidden= Vec::with_capacity(self.layers.len());
+            let mut hidden = Vec::with_capacity(self.layers.len());
             let mut last_size = first.output_size();
             let mut layer_idx: usize = 1;
             for layer_param in self.layers.iter() {
@@ -243,7 +259,7 @@ impl<B: Backend> NetBuilder<B> {
                     &self.backend,
                     layer_idx,
                     last_size,
-                    self.initializer.as_mut()
+                    self.initializer.as_mut(),
                 );
                 last_size = layer.output_size();
                 layer_idx += 1;
@@ -253,13 +269,13 @@ impl<B: Backend> NetBuilder<B> {
                 &self.backend,
                 layer_idx,
                 last_size,
-                self.initializer.as_mut()
+                self.initializer.as_mut(),
             );
             Some(Net::new(
                 self.backend,
                 first,
                 hidden.into_boxed_slice(),
-                last
+                last,
             ))
         }
     }
