@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [profile.dev]
-opt-level = 2
+opt-level = 1
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,6 +12,7 @@ opt-level = 2
 base64 = "0.13.1"
 matrixmultiply = { version = "0.3.2", features = ["threading"] }
 mnist = "0.5.0"
+ndarray = "0.15.6"
 num-traits = "0.2.15"
 rand = "0.8.5"
 rand_distr = "0.4.3"

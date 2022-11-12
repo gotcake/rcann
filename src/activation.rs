@@ -5,12 +5,14 @@ use crate::backend::Backend;
 use crate::dtype::DType;
 use crate::raw::util::{mat_mul, resize_if_needed};
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
 pub enum ActivationFn {
+    #[default]
     Sigmoid,
     ReLU { leak: f64 },
     Softmax,
 }
+
 
 impl ActivationFn {
     pub fn compute_slice(&self, size: usize, target: &mut [f32], activations: &[f32]) {
@@ -46,7 +48,7 @@ impl ActivationFn {
         }
     }
 
-    pub fn compute<B: Backend>(&self, backend: &B, activation: &B::Tensor2, output: &mut B::Tensor2) {
+    pub fn compute<B: Backend>(&self, backend: &B, activation: &B::Tensor, output: &mut B::Tensor) {
         match self {
             ActivationFn::Sigmoid => { backend.sigmoid(activation, output) }
             &ActivationFn::ReLU { leak } => { backend.relu(B::DType::from_f64(leak), activation, output) }
@@ -54,7 +56,7 @@ impl ActivationFn {
         }
     }
 
-    pub fn compute_error<B: Backend>(&self, backend: &B, activation: &B::Tensor2, output: &B::Tensor2, out_error: &B::Tensor2, result: &mut B::Tensor2) {
+    pub fn compute_error<B: Backend>(&self, backend: &B, activation: &B::Tensor, output: &B::Tensor, out_error: &B::Tensor, result: &mut B::Tensor) {
         match self {
             ActivationFn::Sigmoid => { backend.sigmoid_error(output , out_error, result) }
             &ActivationFn::ReLU { leak } => { backend.relu_error(B::DType::from_f64(leak), activation, out_error, result) }

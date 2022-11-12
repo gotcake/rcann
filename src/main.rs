@@ -1,13 +1,16 @@
+#![feature(slice_split_at_unchecked)]
+
 mod activation;
 mod loss;
 mod data;
 mod raw;
 mod hpo;
-mod tensor;
 mod dtype;
 mod backend;
-mod cpu;
 pub mod net;
+mod util;
+mod tensor;
+mod examples;
 
 extern crate num_traits;
 extern crate matrixmultiply;
@@ -18,7 +21,7 @@ extern crate serde_json;
 extern crate base64;
 
 fn main() {
-    crate::raw::mnist_example::train_mnist();
+    crate::examples::mnist_numbers::train_minst();
 }
 /*
 fn train_xor() {
