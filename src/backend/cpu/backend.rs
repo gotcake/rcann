@@ -34,7 +34,19 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
     }
 
     fn matmul(&self, alpha: DT, a: &Self::Tensor, ta: bool, b: &Self::Tensor, tb: bool, beta: DT, c: &mut Self::Tensor, tc: bool) {
+        if a.contains_non_finite() {
+            panic!("a has non-finite: {a:?}")
+        }
+        if b.contains_non_finite() {
+            panic!("b has non-finite: {b:?}")
+        }
+        if !beta.is_zero() && c.contains_non_finite() {
+            panic!("c has non-finite (before multiplication): {c:?}")
+        }
         DT::matrix_multiply(alpha, a, ta, b, tb, beta, c, tc);
+        if c.contains_non_finite() {
+            panic!("c has non-finite (after multiplication): {c:?}\na: {a:?}\nb: {b:?}")
+        }
     }
 
     fn column_sum(&self, alpha: Self::DType, a: &Self::Tensor, beta: Self::DType, b: &mut Self::Tensor) {
@@ -58,30 +70,37 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
 
     // TODO: implement specialized versions of this
     fn add_assign(&self, alpha: Self::DType, a: &Self::Tensor, beta: Self::DType, b: &mut Self::Tensor) {
+        assert_eq!(a.dims(), b.dims());
         for (&ai, bi) in zip(a, b) {
             *bi = alpha * ai + beta * *bi;
         }
     }
 
     fn sigmoid(&self, activation: &Self::Tensor, output: &mut Self::Tensor) {
+        assert_eq!(activation.dims(), output.dims());
         for (o, &a) in zip(output, activation) {
             *o = DT::ONE / (DT::ONE + (-a).exp());
         }
     }
 
     fn sigmoid_error(&self, output: &Self::Tensor, out_error: &Self::Tensor, result: &mut Self::Tensor) {
+        assert_eq!(output.dims(), result.dims());
+        assert_eq!(output.dims(), out_error.dims());
         for ((r, &out), &err) in zip(zip(result, output), out_error) {
             *r = err * (out * (DT::ONE - out))
         }
     }
 
     fn relu(&self, leak: DT, activation: &Self::Tensor, output: &mut Self::Tensor) {
+        assert_eq!(activation.dims(), output.dims());
         for (o, &a) in zip(output, activation) {
             *o = if a < DT::ZERO { a * leak } else { a }
         }
     }
 
     fn relu_error(&self, leak: DT, activation: &Self::Tensor, out_error: &Self::Tensor, result: &mut Self::Tensor) {
+        assert_eq!(activation.dims(), result.dims());
+        assert_eq!(activation.dims(), out_error.dims());
         for ((r, &act), &err) in zip(zip(result, activation), out_error) {
             *r = if act < DT::ZERO { leak * err } else { err };
         }

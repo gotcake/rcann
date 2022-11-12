@@ -19,6 +19,7 @@ extern crate rand_distr;
 extern crate serde;
 extern crate serde_json;
 extern crate base64;
+extern crate core;
 
 fn main() {
     crate::examples::mnist_numbers::train_minst();

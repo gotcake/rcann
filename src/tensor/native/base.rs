@@ -32,6 +32,10 @@ pub trait TensorBase<T: DType>: ITensorBase<T> + Deref<Target=[T]> {
         unsafe { TensorView::from_slice_unchecked(self, Dims::D2(self.len(), 1)) }
     }
 
+    fn contains_non_finite(&self) -> bool {
+        !self.iter().all(|x| x.is_finite())
+    }
+
     /*fn iter_first_axis_chunks(&self, len: usize) -> TensorChunkIter<T> {
         let chunk_dims = self.dims().with_resized_first_axis(len);
         unsafe { TensorChunkIter::new_unchecked(self, chunk_dims) }
@@ -82,13 +86,13 @@ macro_rules! impl_tensor_debug {
                 use std::fmt::{Write, Display};
                 Display::fmt(&self.dims, f)?;
                 f.write_char('[')?;
-                if self.len() > 10 {
-                    for x in &self[..5] {
-                        write!(f, "{:+e}, ", x)?;
+                if self.len() > 20 {
+                    for x in &self[..10] {
+                        write!(f, "{:e}, ", x)?;
                     }
                     f.write_str("...")?;
-                    for x in &self[self.len()-5..] {
-                        write!(f, ", {:+e}", x)?;
+                    for x in &self[self.len()-10..] {
+                        write!(f, ", {:e}", x)?;
                     }
                 } else {
                     let mut first = true;
@@ -98,7 +102,7 @@ macro_rules! impl_tensor_debug {
                         } else {
                             f.write_str(", ")?;
                         }
-                        write!(f, "{:+e}", x)?;
+                        write!(f, "{:e}", x)?;
                     }
                 }
                 f.write_char(']')

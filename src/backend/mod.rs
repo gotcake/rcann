@@ -3,7 +3,6 @@ use crate::dtype::DType;
 use crate::tensor::{Dims, ITensor, TensorViewMut, TensorBase, TensorView};
 
 mod cpu;
-mod ndarray;
 
 pub use cpu::CpuBackend;
 

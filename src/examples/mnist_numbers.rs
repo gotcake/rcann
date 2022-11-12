@@ -9,7 +9,8 @@ use crate::loss::LossFn;
 use crate::net::initializer::RandomNetInitializer;
 use crate::net::layer::FullyConnectedLayerParams;
 use crate::net::{NetBuilder, TrainBatchResult};
-use crate::tensor::{Tensor, TensorBase, TensorView};
+use crate::tensor::{ITensorBase, Tensor, TensorBase, TensorView};
+use crate::util::max_index;
 use super::util::{MnistData, load_mnist_data};
 
 pub fn train_minst() {
@@ -22,13 +23,13 @@ pub fn train_minst() {
         .with_initializer(RandomNetInitializer::seed_from_u64(0xf1234567))
         .with_layer(FullyConnectedLayerParams { size: 128, activation_fn: ActivationFn::Sigmoid })
         .with_layer(FullyConnectedLayerParams { size: 32, activation_fn: ActivationFn::Sigmoid })
-        .with_layer(FullyConnectedLayerParams { size: 10, activation_fn: ActivationFn::Sigmoid })
+        .with_layer(FullyConnectedLayerParams { size: 10, activation_fn: ActivationFn::Softmax })
         .build()
         .unwrap();
 
-    println!("{:#?}", net);
+    //println!("{:#?}", net);
 
-    let max_epochs = 10;
+    let max_epochs = 100;
 
     for epoch in 0..max_epochs {
 
@@ -36,31 +37,45 @@ pub fn train_minst() {
 
         let mut rmse: f32 = 0.0;
         let mut mse: f32 = 0.0;
-        let mut correct: usize = 0;
+        let mut wrong: usize = 0;
         let mut total: usize = 0;
 
         for (image_data, labels) in train.iter() {
             let TrainBatchResult { error, output } = net.train_batch(image_data, labels, &LossFn::MSE, 0.1, 0.1);
             total += error.len();
-            let b_mse = error.iter().sum::<f32>();
-            let b_rmse = error.iter().map(|&x| x.sqrt()).sum::<f32>();
-            mse += b_mse;
-            rmse += b_rmse;
-            println!("avg RMSE: {}, avg MSE: {}, output: {output:?}", b_rmse / error.len() as f32, b_mse / error.len() as f32);
-            println!("{:#?}", net);
-            std::thread::sleep(Duration::from_millis(1000));
-            //break;
+            mse += error.iter().sum::<f32>();
+            rmse += error.iter().map(|&x| x.sqrt()).sum::<f32>();
+            wrong += count_batch_errors(labels, output);
         }
 
         mse /= total as f32;
         rmse /= total as f32;
 
-        println!("epoch: {epoch}, avg RMSE: {rmse}, avg MSE: {mse}");
-        break;
+        println!("epoch: {epoch}, avg RMSE: {rmse}, avg MSE: {mse}, error rate: {}%", (wrong as f32 / total as f32) * 100.0);
 
     }
 
-    println!("{:#?}", net);
+    //println!("{:#?}", net);
 
-    
+    let mut total = 0;
+    let mut errors = 0;
+    for (image_data, labels) in test.iter() {
+        let output = net.predict(image_data);
+        errors += count_batch_errors(labels, output);
+        total += output.dims().first();
+    }
+
+    println!("test error rate: {}", (errors as f32 / total as f32) * 100.0);
+
+}
+
+fn count_batch_errors(labels: &Tensor<f32>, output: &Tensor<f32>) -> usize {
+    zip(labels.iter_first_axis(), output.iter_first_axis())
+        .fold(0, |sum, (l, o)| {
+            if max_index(&l) == max_index(&o) {
+                sum
+            } else {
+                sum + 1
+            }
+        })
 }
