@@ -9,12 +9,12 @@ use rcann::loss::LossFn;
 use rcann::net::initializer::RandomNetInitializer;
 use rcann::net::layer::FullyConnectedLayerParams;
 use rcann::net::{NetBuilder, TrainBatchResult};
-use rcann::tensor::{ITensorBase, Tensor, TensorBase, TensorView};
+use rcann::tensor::{ITensorBase, Tensor, TensorBase};
 use crate::util::{MnistData, load_mnist_data, max_index};
 
 pub fn train_minst() {
     
-    let MnistData { mut train, mut test } = load_mnist_data::<f64>(60_000, 10_000, 64);
+    let MnistData { mut train, test } = load_mnist_data::<f64>(60_000, 10_000, 64);
 
     let mut shuffle_rng = StdRng::seed_from_u64(0xf666);
 

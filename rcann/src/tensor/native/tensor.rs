@@ -1,8 +1,6 @@
-use std::fmt::{Display, Debug, Formatter, Write};
 use std::ops::{Deref, DerefMut};
 use std::slice::{Iter, IterMut};
 use std::vec::IntoIter;
-use serde::Serializer;
 use crate::dtype::DType;
 use crate::impl_tensor_debug;
 use crate::tensor::{ITensor, ITensorBase, TensorBase, TensorBaseMut, Dims, TensorView, TensorViewMut};

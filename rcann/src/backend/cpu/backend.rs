@@ -5,7 +5,7 @@ use std::iter::zip;
 use std::ops::{Deref, DerefMut};
 use crate::backend::Backend;
 use super::math::{DTypeOps, compute_jacobian_matrix};
-use crate::tensor::{Tensor, TensorBase, TensorBaseMut, TensorView, TensorViewMut, Dims, ITensorBase, ITensor};
+use crate::tensor::{Tensor, TensorBase, TensorBaseMut, Dims, ITensorBase, ITensor};
 
 pub struct CpuBackend<DT: DTypeOps> {
     temp_matrix: RefCell<Tensor<DT>>

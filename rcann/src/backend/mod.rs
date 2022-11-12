@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 use crate::dtype::DType;
-use crate::tensor::{Dims, ITensor, TensorViewMut, TensorBase, TensorView};
+use crate::tensor::{Dims, ITensor, TensorBase};
 
 mod cpu;
 

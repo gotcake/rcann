@@ -2,13 +2,9 @@
 
 pub mod activation;
 pub mod loss;
-mod data;
-mod raw;
-mod hpo;
 pub mod dtype;
 pub mod backend;
 pub mod net;
-mod util;
 pub mod tensor;
 
 extern crate num_traits;

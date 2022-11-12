@@ -1,4 +1,4 @@
-use std::fmt::{Display, LowerExp};
+use std::fmt::{LowerExp};
 use std::ops::Neg;
 use num_traits::{Float, NumAssignOps, NumOps, One, Zero, FloatConst, NumCast};
 

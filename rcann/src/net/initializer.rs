@@ -1,4 +1,4 @@
-use rand::{Rng, SeedableRng};
+use rand::{SeedableRng};
 use rand::distributions::Distribution;
 use rand::rngs::StdRng;
 use rand_distr::Normal;
@@ -45,7 +45,7 @@ impl Default for RandomNetInitializer {
 
 impl<T: DType> NetInitializer<T> for RandomNetInitializer {
 
-    fn get_weights(&mut self, layer_type: LayerType, dim: Dims, layer_idx: usize, input_size: usize, output_size: usize) -> Tensor<T> {
+    fn get_weights(&mut self, _layer_type: LayerType, dim: Dims, _layer_idx: usize, input_size: usize, output_size: usize) -> Tensor<T> {
         let std = (2.0 / (input_size + output_size) as f64).sqrt();
         let dist = Normal::new(0.0, std).unwrap();
         let vec: Vec<T> = dist.sample_iter(&mut self.rng)
@@ -55,7 +55,7 @@ impl<T: DType> NetInitializer<T> for RandomNetInitializer {
         Tensor::from_vec(vec, dim)
     }
 
-    fn get_biases(&mut self, layer_type: LayerType, dims: Dims, layer_idx: usize) -> Tensor<T> {
+    fn get_biases(&mut self, _layer_type: LayerType, dims: Dims, _layer_idx: usize) -> Tensor<T> {
         Tensor::zero(dims)
     }
 
