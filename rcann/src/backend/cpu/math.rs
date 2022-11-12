@@ -26,6 +26,7 @@ pub trait DTypeOps: DType {
     fn matrix_multiply<A, B, C>(alpha: Self, a: &A, ta: bool, b: &B, tb: bool, beta: Self, c: &mut C, tc: bool) where A: TensorBase<Self>, B: TensorBase<Self>, C: TensorBaseMut<Self>;
 }
 
+/*
 impl DTypeOps for f32 {
     fn matrix_multiply<A, B, C>(alpha: Self, a: &A, ta: bool, b: &B, tb: bool, beta: Self, c: &mut C, tc: bool) where A: TensorBase<Self>, B: TensorBase<Self>, C: TensorBaseMut<Self> {
         let (a_rows, a_cols) = a.dims().unwrap_2d();
@@ -61,30 +62,33 @@ impl DTypeOps for f32 {
             );
         }
     }
-}
-/*
+}*/
+
 macro_rules! implement_dtype_ops {
     ($t: ident, $g: ident) => {
         impl DTypeOps for $t {
-            fn matmul(alpha: $t, a: &TensorView<$t>, ta: bool, b: &TensorView<$t>, tb: bool, beta: $t, c: &mut TensorViewMut<$t>, tc: bool) {
+            fn matrix_multiply<A, B, C>(alpha: Self, a: &A, ta: bool, b: &B, tb: bool, beta: Self, c: &mut C, tc: bool) where A: TensorBase<Self>, B: TensorBase<Self>, C: TensorBaseMut<Self> {
+                let (a_rows, a_cols) = a.dims().unwrap_2d();
+                let (b_rows, b_cols) = b.dims().unwrap_2d();
+                let (_, c_cols) = c.dims().unwrap_2d();
                 let (m, k, rsa, csa) = if ta {
-                    (a.cols(), a.rows(), 1, a.rows() as isize)
+                    (a_cols, a_rows, 1, a_cols as isize)
                 } else {
-                    (a.rows(), a.cols(), a.cols() as isize, 1)
+                    (a_rows, a_cols, a_cols as isize, 1)
                 };
                 let (n, rsb, csb) = if tb {
-                    assert_eq!(b.cols(), k);
-                    (b.rows(), 1, b.rows() as isize)
+                    assert_eq!(b_cols, k);
+                    (b_rows, 1, b_cols as isize)
                 } else {
-                    assert_eq!(b.rows(), k);
-                    (b.cols(), b.cols() as isize, 1)
+                    assert_eq!(b_rows, k);
+                    (b_cols, b_cols as isize, 1)
                 };
                 let (rsc, csc) = if tc {
-                    assert_eq!(c.dim(), (n, m));
-                    (1, c.rows() as isize)
+                    assert_eq!(c.dims(), &Dims::D2(n, m));
+                    (1, c_cols as isize)
                 } else {
-                    assert_eq!(c.dim(), (m, n));
-                    (c.cols() as isize, 1)
+                    assert_eq!(c.dims(), &Dims::D2(m, n));
+                    (c_cols as isize, 1)
                 };
                 unsafe {
                     matrixmultiply::$g(
@@ -103,12 +107,10 @@ macro_rules! implement_dtype_ops {
 
 implement_dtype_ops!(f32, sgemm);
 implement_dtype_ops!(f64, dgemm);
-*/
 
 #[cfg(test)]
 mod test {
     use crate::backend::cpu::math::DTypeOps;
-    use crate::raw::util::{mat_mul, mat_mul_a_transpose, mat_mul_b_transpose};
     use crate::tensor::Tensor;
 
     macro_rules! assert_slice_equal {

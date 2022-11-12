@@ -34,19 +34,7 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
     }
 
     fn matmul(&self, alpha: DT, a: &Self::Tensor, ta: bool, b: &Self::Tensor, tb: bool, beta: DT, c: &mut Self::Tensor, tc: bool) {
-        if a.contains_non_finite() {
-            panic!("a has non-finite: {a:?}")
-        }
-        if b.contains_non_finite() {
-            panic!("b has non-finite: {b:?}")
-        }
-        if !beta.is_zero() && c.contains_non_finite() {
-            panic!("c has non-finite (before multiplication): {c:?}")
-        }
         DT::matrix_multiply(alpha, a, ta, b, tb, beta, c, tc);
-        if c.contains_non_finite() {
-            panic!("c has non-finite (after multiplication): {c:?}\na: {a:?}\nb: {b:?}")
-        }
     }
 
     fn column_sum(&self, alpha: Self::DType, a: &Self::Tensor, beta: Self::DType, b: &mut Self::Tensor) {
@@ -159,10 +147,6 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
             }
             *r = sum_error / count;
         }
-    }
-
-    fn transform_func<F>(&self, a: &Self::Tensor, out: &mut Self::Tensor, f: F) where F: FnOnce(TensorView<Self::DType>, TensorViewMut<Self::DType>) {
-        f(a.view(), out.view_mut());
     }
 
 }

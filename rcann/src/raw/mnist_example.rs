@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+/*use std::cmp::Ordering;
 use std::fs::File;
 use std::io::BufWriter;
 use std::iter::zip;
@@ -96,7 +96,7 @@ pub fn train_mnist() {
 
     println!("Test errors: {}/{} ({:.3}%)", errors, total, (errors as f32 / total as f32) * 100.);
 
-    let f = File::create("data/mnist_net.json").unwrap();
+    let f = File::create("../../../data/mnist_net.json").unwrap();
     let writer = BufWriter::new(f);
     serde_json::to_writer_pretty(writer, &net).unwrap();
 
@@ -108,4 +108,4 @@ fn argmax<T: PartialOrd>(a: &[T]) -> usize {
         .max_by(|&i, &j| if i.1 < j.1 { Ordering::Less } else { Ordering::Greater })
         .map(|i| i.0)
         .unwrap()
-}
+}*/

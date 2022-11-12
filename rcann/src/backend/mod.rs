@@ -43,6 +43,4 @@ pub trait Backend: 'static + Debug {
 
     fn mean_squared_error(&self, output: &Self::Tensor, expected: &Self::Tensor, result: &mut Self::Tensor, result_deriv: &mut Self::Tensor);
 
-    fn transform_func<F>(&self, a: &Self::Tensor, out: &mut Self::Tensor, f: F) where F: FnOnce(TensorView<Self::DType>, TensorViewMut<Self::DType>);
-
 }

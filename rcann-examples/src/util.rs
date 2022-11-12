@@ -1,17 +1,18 @@
+use std::cmp::Ordering;
 use std::iter::zip;
 use mnist::{Mnist, MnistBuilder};
-use crate::dtype::DType;
-use crate::tensor::Tensor;
+use rcann::dtype::DType;
+use rcann::tensor::Tensor;
 
 const IMAGE_PIXELS: usize = 28 * 28;
 const NUM_CLASSES: usize = 10;
 
-pub(crate) struct MnistData<D: DType> {
+pub struct MnistData<D: DType> {
     pub train: Vec<(Tensor<D>, Tensor<D>)>,
     pub test: Vec<(Tensor<D>, Tensor<D>)>,
 }
 
-pub(crate) fn load_mnist_data<D: DType>(
+pub fn load_mnist_data<D: DType>(
     train_samples: usize,
     test_samples: usize,
     batch_size: usize
@@ -57,4 +58,17 @@ fn get_batches<I: Copy, O, F>(raw: Vec<I>, sample_size: usize, batch_size: usize
             Tensor::from_vec(converted, (num_samples, sample_size))
         })
         .collect()
+}
+
+pub fn max_index<T: Copy + PartialOrd>(a: &[T]) -> usize {
+    a.iter()
+        .enumerate()
+        .max_by(|&(_, &a), &(_, &b)| {
+            if a < b {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        })
+        .expect("expected at least one element").0
 }

@@ -8,7 +8,6 @@ use crate::net::layer::{ConcreteLayer, ConcreteLayerParams, Layer, LayerParams};
 use crate::tensor::{ITensor};
 
 pub mod layer;
-pub mod transform;
 pub mod initializer;
 
 pub struct Net<B: Backend> {
