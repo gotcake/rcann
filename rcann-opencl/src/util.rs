@@ -5,6 +5,16 @@ use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
 use opencl3::kernel::Kernel;
 use opencl3::program::Program;
 
+pub const MATRIX_PADDING_SIZE: usize = 16;
+pub const fn next_multiple(n: usize, of: usize) -> usize {
+    let rem = n % of;
+    if rem == 0 {
+        n
+    } else {
+        n + (of - rem)
+    }
+}
+
 pub struct ContextWrapper {
     context: Context,
     device: Device,

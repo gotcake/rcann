@@ -1,9 +1,11 @@
 use crate::backend::Backend;
 use crate::dtype::DType;
 use crate::tensor::Dim2;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum ActivationFn {
     #[default]
     Sigmoid,

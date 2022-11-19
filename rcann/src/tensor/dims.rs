@@ -31,6 +31,7 @@ pub trait Dims: Copy + Debug + Eq + Display {
     fn as_vec(&self) -> Vec<usize>;
     fn without_first_axis(&self) -> Self::Less;
     fn with_resized_first_axis(&self, size: usize) -> Self;
+    fn map_each<F>(&self, f: F) -> Self where F: FnMut(usize, usize) -> usize;
 }
 
 impl Display for Dim0 {
@@ -59,6 +60,10 @@ impl Dims for Dim0 {
     fn with_resized_first_axis(&self, _size: usize) -> Self {
         Dim0
     }
+    #[inline]
+    fn map_each<F>(&self, _f: F) -> Self where F: FnMut(usize, usize) -> usize {
+        Dim0
+    }
 }
 
 impl Dims for Dim1 {
@@ -80,6 +85,9 @@ impl Dims for Dim1 {
     }
     fn with_resized_first_axis(&self, size: usize) -> Self {
         Dim1(size)
+    }
+    fn map_each<F>(&self, mut f: F) -> Self where F: FnMut(usize, usize) -> usize {
+        Dim1(f(self.0, 0))
     }
 }
 
@@ -112,6 +120,10 @@ impl Dims for Dim2 {
 
     fn with_resized_first_axis(&self, size: usize) -> Self {
         Dim2(size, self.1)
+    }
+
+    fn map_each<F>(&self, mut f: F) -> Self where F: FnMut(usize, usize) -> usize {
+        Dim2(f(self.0, 0), f(self.1, 1))
     }
 }
 
@@ -147,6 +159,10 @@ impl Dims for Dim3 {
 
     fn with_resized_first_axis(&self, size: usize) -> Self {
         Dim3(size, self.1, self.2)
+    }
+
+    fn map_each<F>(&self, mut f: F) -> Self where F: FnMut(usize, usize) -> usize {
+        Dim3(f(self.0, 0), f(self.1, 1), f(self.2, 2))
     }
 }
 

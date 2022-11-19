@@ -8,10 +8,13 @@ pub mod net;
 pub mod tensor;
 mod util;
 
-extern crate base64;
 extern crate matrixmultiply;
 extern crate num_traits;
 extern crate rand;
 extern crate rand_distr;
+#[cfg(feature = "serde")]
 extern crate serde;
+#[cfg(feature = "serde")]
 extern crate serde_json;
+#[cfg(feature = "approx")]
+extern crate approx;

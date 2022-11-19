@@ -1,15 +1,18 @@
 use crate::error::Error;
-use crate::util::Result;
+use crate::util::{next_multiple, Result};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::event::{Event, CL_COMPLETE};
 use opencl3::memory::{Buffer, CL_MEM_READ_WRITE};
 use opencl3::types::{cl_double, cl_float, CL_BLOCKING};
-use rcann::tensor::{Dims, ITensor, Tensor, TensorBase};
+use rcann::tensor::{Dim2, Dims, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView, TensorViewMut};
 use std::cell::RefCell;
+use std::cmp::min;
+use std::iter::zip;
 use std::ops::Deref;
 use std::ptr;
 use std::rc::Rc;
+use crate::util::MATRIX_PADDING_SIZE;
 
 pub trait OclDType: Copy + Default {}
 impl OclDType for cl_float {}
@@ -18,7 +21,7 @@ impl OclDType for cl_double {}
 pub struct OclTensor<T: OclDType, D: Dims> {
     buffer: Buffer<T>,
     dims: D,
-    capacity: usize,
+    buffer_dims: D,
     dependency: RefCell<Option<Rc<Event>>>,
 }
 
@@ -35,7 +38,8 @@ impl<T: OclDType, D: Dims> ITensor<T, D> for OclTensor<T, D> {
 
 impl<T: OclDType, D: Dims> OclTensor<T, D> {
     pub fn new(context: &Context, dims: D) -> Result<Self> {
-        let capacity = dims.tensor_len();
+        let buffer_dims = dims.map_each(|size, _| next_multiple(size, MATRIX_PADDING_SIZE));
+        let capacity = buffer_dims.tensor_len();
         let buffer = unsafe {
             Buffer::<T>::create(context, CL_MEM_READ_WRITE, capacity, ptr::null_mut())
                 .map_err(|err| Error::from_cl_err(err, "Failed to create buffer"))?
@@ -43,7 +47,7 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         Ok(OclTensor {
             buffer,
             dims,
-            capacity,
+            buffer_dims,
             dependency: RefCell::new(None),
         })
     }
@@ -68,6 +72,11 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         Ok(tensor)
     }
 
+    #[inline]
+    pub fn buffer_dims(&self) -> &D {
+        &self.buffer_dims
+    }
+
     fn sync(&self) -> Result<()> {
         if let Some(evt) = self.dependency.borrow_mut().take() {
             evt.wait().map_err(|err| {
@@ -83,9 +92,11 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
     {
         assert_eq!(self.len(), dst.len());
         self.sync()?;
+        // TODO: reuse some buffer
+        let mut tmp: Tensor<T, D> = Tensor::filled_default(self.buffer_dims);
         let read_event = unsafe {
             queue
-                .enqueue_read_buffer(&self.buffer, CL_BLOCKING, 0, dst.as_mut(), &[])
+                .enqueue_read_buffer(&self.buffer, CL_BLOCKING, 0, tmp.as_mut(), &[])
                 .map_err(|err| Error::from_cl_err(err, "Failed to enqueue buffer read"))?
         };
         if cfg!(debug_assertions) {
@@ -94,6 +105,7 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
                 .map_err(|err| Error::from_cl_err(err, "Failed to get command execution status"))?;
             assert_eq!(status.0, CL_COMPLETE);
         }
+        copy_padded(tmp.view(), TensorViewMut::from_slice(dst, self.dims));
         Ok(())
     }
 
@@ -102,10 +114,12 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         Q: Deref<Target = CommandQueue>,
     {
         assert_eq!(self.len(), src.len());
+        let mut tmp: Tensor<T, D> = Tensor::filled_default(self.buffer_dims);
+        copy_padded(TensorView::from_slice(src, self.dims), tmp.view_mut());
         self.sync()?;
         let write_evt = unsafe {
             queue
-                .enqueue_write_buffer(&mut self.buffer, CL_BLOCKING, 0, src.as_ref(), &[])
+                .enqueue_write_buffer(&mut self.buffer, CL_BLOCKING, 0, tmp.as_ref(), &[])
                 .map_err(|err| Error::from_cl_err(err, "Failed to enqueue buffer read"))?
         };
         if cfg!(debug_assertions) {
@@ -140,8 +154,21 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         Q: Deref<Target = CommandQueue>,
         T: Default + Clone,
     {
-        let mut native = Tensor::filled_default(*&self.dims);
+        let mut native = Tensor::filled_default(self.dims);
         self.read_sync(queue, native.as_mut())?;
         Ok(native)
+    }
+}
+
+fn copy_padded<T: Copy, D: Dims>(src: TensorView<T, D>, mut dst: TensorViewMut<T, D>) {
+    if D::N < 2 {
+        let copy_len = min(dst.len(), src.len());
+        unsafe {
+            ptr::copy_nonoverlapping(src.as_ref().as_ptr(), dst.as_mut().as_mut_ptr(), copy_len);
+        }
+    } else {
+        for (src_row, dst_row) in zip(src.iter_first_axis(), dst.iter_first_axis_mut()) {
+            copy_padded(src_row, dst_row);
+        }
     }
 }
