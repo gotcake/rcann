@@ -1,6 +1,6 @@
 use super::math::{compute_jacobian_matrix, DTypeOps};
-use crate::backend::Backend;
-use crate::tensor::{Dims, ITensor, ITensorBase, Tensor, TensorBase, TensorBaseMut};
+use crate::backend::{Backend, BackendOther, MatrixMultiplication, TensorOps, TensorTyped};
+use crate::tensor::{Dims, ITensor, Tensor, TensorBase, TensorBaseMut};
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter, Write};
@@ -19,36 +19,42 @@ impl<DT: DTypeOps> CpuBackend<DT> {
     }
 }
 
-impl<DT: DTypeOps> Backend for CpuBackend<DT> {
+impl<DT: DTypeOps> TensorTyped for CpuBackend<DT> {
     type DType = DT;
     type Tensor = Tensor<DT>;
+}
 
+impl<DT: DTypeOps> TensorOps for CpuBackend<DT> {
     #[inline]
-    fn new_tensor<D: Into<Dims>>(&self, dim: D) -> Self::Tensor {
-        Tensor::zero(dim)
+    fn new_tensor<D>(&self, dim: D) -> Self::Tensor where D: Into<Dims> {
+        Tensor::filled_default(dim)
     }
-
     #[inline]
-    fn new_tensor_from_native<T>(&self, native: T) -> Self::Tensor
-    where
-        T: TensorBase<Self::DType>,
-    {
+    fn resize_tensor<D>(&self, tensor: &mut Self::Tensor, dims: D) where D: Into<Dims> {
+        tensor.resize_fill_default(dims)
+    }
+    fn write_tensor<T>(&self, tensor: &mut Self::Tensor, native_src: &T) where T: TensorBase<Self::DType> {
+        assert_eq!(tensor.dims(), native_src.dims());
+        tensor.as_mut().copy_from_slice(native_src.as_ref());
+    }
+    fn read_tensor<T>(&self, tensor: &Self::Tensor, native_dst: &mut T) where T: TensorBaseMut<Self::DType> {
+        assert_eq!(tensor.dims(), native_dst.dims());
+        native_dst.as_mut().copy_from_slice(tensor.as_ref());
+    }
+    #[inline]
+    fn new_tensor_from_native<T>(&self, native: T) -> Self::Tensor where T: TensorBase<Self::DType> {
         native.into_owned()
     }
+}
 
-    fn matmul(
-        &self,
-        alpha: DT,
-        a: &Self::Tensor,
-        ta: bool,
-        b: &Self::Tensor,
-        tb: bool,
-        beta: DT,
-        c: &mut Self::Tensor,
-        tc: bool,
-    ) {
+impl<DT: DTypeOps> MatrixMultiplication for CpuBackend<DT> {
+    #[inline]
+    fn matmul(&self, alpha: DT, a: &Self::Tensor, ta: bool, b: &Self::Tensor, tb: bool, beta: DT, c: &mut Self::Tensor, tc: bool) {
         DT::matrix_multiply(alpha, a, ta, b, tb, beta, c, tc);
     }
+}
+
+impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
 
     fn column_sum(
         &self,
@@ -168,7 +174,7 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
         let (_, size) = output.dims().unwrap_2d();
         assert_eq!(output.dims(), result.dims());
         let mut temp = self.temp_matrix.borrow_mut();
-        temp.resize((size, size));
+        self.resize_tensor(temp.deref_mut(), (size, size));
         for (mut result_row, (output_row, out_err_row)) in zip(
             result.iter_first_axis_mut(),
             zip(output.iter_first_axis(), out_error.iter_first_axis()),
@@ -215,6 +221,8 @@ impl<DT: DTypeOps> Backend for CpuBackend<DT> {
         }
     }
 }
+
+impl<DT: DTypeOps> Backend for CpuBackend<DT> {}
 
 impl<DT: DTypeOps> Debug for CpuBackend<DT> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

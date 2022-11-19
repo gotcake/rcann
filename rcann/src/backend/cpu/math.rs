@@ -1,5 +1,5 @@
 use crate::dtype::DType;
-use crate::tensor::{Dims, ITensorBase, Tensor, TensorBase, TensorBaseMut};
+use crate::tensor::{Dims, ITensor, Tensor, TensorBase, TensorBaseMut};
 
 pub fn compute_jacobian_matrix<T: DType>(a: &[T], b: &mut Tensor<T>) {
     let size = a.len();
@@ -121,14 +121,14 @@ macro_rules! implement_dtype_ops {
                         k,
                         n,
                         alpha,
-                        a.as_ptr(),
+                        a.as_ref().as_ptr(),
                         rsa,
                         csa,
-                        b.as_ptr(),
+                        b.as_ref().as_ptr(),
                         rsb,
                         csb,
                         beta,
-                        c.as_mut_ptr(),
+                        c.as_mut().as_mut_ptr(),
                         rsc,
                         csc,
                     );
@@ -173,10 +173,10 @@ mod test {
 
         let c = Tensor::from_vec(vec![0.5, 1., 1., 0.25], (2, 2));
 
-        let mut r2x2 = Tensor::zero((2, 2));
-        let mut r2x3 = Tensor::zero((2, 3));
-        let mut r3x2 = Tensor::zero((3, 2));
-        let mut r3x3 = Tensor::zero((3, 3));
+        let mut r2x2 = Tensor::filled(0., (2, 2));
+        let mut r2x3 = Tensor::filled(0., (2, 3));
+        let mut r3x2 = Tensor::filled(0., (3, 2));
+        let mut r3x3 = Tensor::filled(0., (3, 3));
 
         // various combinations of A X B
 

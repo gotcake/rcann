@@ -2,7 +2,7 @@ use crate::activation::ActivationFn;
 use crate::backend::Backend;
 use crate::dtype::DType;
 use crate::net::layer::{ConcreteLayerParams, Layer, LayerParams, LayerType, NetInitializer};
-use crate::tensor::{Dims, ITensor, ITensorBase};
+use crate::tensor::{Dims, ITensor};
 use std::fmt::{Debug, Formatter};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -109,7 +109,7 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
             "Invalid dimensions for output tensor"
         );
 
-        self.activation.resize_first_dim(num_rows);
+        backend.resize_tensor_first_dim(&mut self.activation, num_rows);
         backend.matmul(
             B::DType::ONE,
             input,
@@ -157,7 +157,7 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
             TrainingTensors::new(backend, num_rows, self.output_size, self.input_size)
         });
 
-        tt.activation_error.resize_first_dim(num_rows);
+        backend.resize_tensor_first_dim(&mut tt.activation_error, num_rows);
         self.activation_fn.compute_error(
             backend,
             &self.activation,
@@ -229,8 +229,9 @@ impl<B: Backend> Debug for FullyConnectedLayer<B> {
         f.debug_struct("FullyConnectedLayer")
             .field("size", &self.output_size)
             .field("activation_fn", &self.activation_fn)
-            .field("weights", &self.weights)
-            .field("biases", &self.biases)
+            // TODO: implement debug for these values
+            //.field("weights", &self.weights)
+            //.field("biases", &self.biases)
             .finish_non_exhaustive()
     }
 }

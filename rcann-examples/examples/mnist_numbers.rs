@@ -1,4 +1,3 @@
-use crate::util::{load_mnist_data, max_index, MnistData};
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
@@ -12,7 +11,9 @@ use rcann::net::{NetBuilder, TrainBatchResult};
 use rcann::tensor::{ITensorBase, Tensor, TensorBase};
 use std::iter::zip;
 
-pub fn train_minst() {
+use rcann_examples::util::{load_mnist_data, max_index, MnistData};
+
+pub fn main() {
     let MnistData { mut train, test } = load_mnist_data::<f64>(60_000, 10_000, 64);
 
     let mut shuffle_rng = StdRng::seed_from_u64(0xf666);

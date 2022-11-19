@@ -2,8 +2,7 @@ use crate::backend::Backend;
 use crate::loss::LossFn;
 use crate::net::initializer::{NetInitializer, RandomNetInitializer};
 use crate::net::layer::{ConcreteLayer, ConcreteLayerParams, Layer, LayerParams};
-use crate::tensor::ITensor;
-use crate::tensor::{Dims, ITensorBase};
+use crate::tensor::{Dims, ITensor};
 use std::fmt::{Debug, Formatter};
 use std::iter::zip;
 
@@ -105,20 +104,19 @@ impl<B: Backend> Net<B> {
     }
 
     fn forward(&mut self, num_rows: usize, input: &B::Tensor) {
-        self.first_output.resize_first_dim(num_rows);
+        self.backend.resize_tensor_first_dim(&mut self.first_output, num_rows);
         self.first
             .forward(&self.backend, input, &mut self.first_output);
 
         let mut input = &self.first_output;
         for (layer, output) in zip(self.hidden.iter_mut(), self.hidden_outputs.iter_mut()) {
-            output.resize_first_dim(num_rows);
+            self.backend.resize_tensor_first_dim(output, num_rows);
             layer.forward(&self.backend, input, output);
             input = output;
         }
 
-        self.last_output.resize_first_dim(num_rows);
-        self.last
-            .forward(&self.backend, input, &mut self.last_output);
+        self.backend.resize_tensor_first_dim(&mut self.last_output, num_rows);
+        self.last.forward(&self.backend, input, &mut self.last_output);
     }
 
     fn backprop(
@@ -130,8 +128,8 @@ impl<B: Backend> Net<B> {
         learn_rate: B::DType,
         momentum: B::DType,
     ) {
-        self.output_error_buff.resize(num_rows);
-        self.output_error_deriv_buff.resize_first_dim(num_rows);
+        self.backend.resize_tensor(&mut self.output_error_buff, num_rows);
+        self.backend.resize_tensor_first_dim(&mut self.output_error_deriv_buff, num_rows);
         loss.compute(
             &self.backend,
             &self.last_output,
@@ -145,7 +143,7 @@ impl<B: Backend> Net<B> {
             Some(last_hidden_output) => last_hidden_output,
         };
 
-        self.last_input_error.resize_first_dim(num_rows);
+        self.backend.resize_tensor_first_dim(&mut self.last_input_error, num_rows);
         self.last.backprop(
             &self.backend,
             last_input,
@@ -172,7 +170,7 @@ impl<B: Backend> Net<B> {
             } else {
                 &self.hidden_outputs[i - 1]
             };
-            input_error.resize_first_dim(num_rows);
+            self.backend.resize_tensor_first_dim(input_error, num_rows);
             layer.backprop(
                 &self.backend,
                 layer_input,

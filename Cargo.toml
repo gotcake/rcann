@@ -1,0 +1,10 @@
+[workspace]
+
+members = [
+    'rcann',
+    'rcann-examples',
+    'rcann-opencl'
+]
+
+[profile.dev]
+opt-level = 1

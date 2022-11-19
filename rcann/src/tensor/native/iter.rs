@@ -1,154 +1,136 @@
-use crate::dtype::DType;
+use std::marker::PhantomData;
 use crate::tensor::{Dims, TensorView, TensorViewMut};
 
-pub struct TensorIter<'a, T: DType> {
-    rest: &'a [T],
+// TODO: unsafe for zero sized types
+pub struct TensorIter<'a, T: 'a> {
+    ptr: *const T,
+    end: *const T,
     stride: usize,
     out_dims: Dims,
+    _marker: PhantomData<&'a mut T>,
 }
 
-impl<'a, T: DType> TensorIter<'a, T> {
-    pub(crate) unsafe fn new_unchecked(data: &'a [T], out_dims: Dims) -> Self {
-        debug_assert!(data.len() % out_dims.tensor_len() == 0);
+impl<'a, T: 'a> TensorIter<'a, T> {
+    pub(super) unsafe fn new_unchecked(data: &'a [T], out_dims: Dims) -> Self {
+        debug_assert!((data.len() == 0 && out_dims.tensor_len() == 0)|| data.len() % out_dims.tensor_len() == 0);
         let stride = out_dims.tensor_len();
+        let range = data.as_ptr_range();
+        debug_assert!(range.start <= range.end);
         TensorIter {
-            rest: data,
+            ptr: range.start,
+            end: range.end,
             stride,
             out_dims,
+            _marker: PhantomData,
         }
     }
 }
 
-impl<'a, T: DType> Iterator for TensorIter<'a, T> {
-    type Item = TensorView<'a, T>;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.rest.is_empty() {
-            None
-        } else {
-            unsafe {
-                let (chunk, rest) = self.rest.split_at_unchecked(self.stride);
-                self.rest = rest;
-                Some(TensorView::from_slice_unchecked(
-                    chunk,
-                    self.out_dims.clone(),
-                ))
-            }
-        }
-    }
-}
-
-pub struct TensorIterMut<'a, T: 'a + DType> {
-    rest: &'a mut [T],
+// TODO: unsafe for zero sized types
+pub struct TensorIterMut<'a, T: 'a> {
+    ptr: *mut T,
+    end: *mut T,
     stride: usize,
     out_dims: Dims,
+    _marker: PhantomData<&'a mut T>,
 }
 
-impl<'a, T: DType> TensorIterMut<'a, T> {
-    pub(crate) unsafe fn new_unchecked(data: &'a mut [T], out_dims: Dims) -> Self {
-        debug_assert!(data.len() % out_dims.tensor_len() == 0);
+impl<'a, T: 'a> TensorIterMut<'a, T> {
+    pub(super) unsafe fn new_unchecked(data: &'a mut [T], out_dims: Dims) -> Self {
+        debug_assert!((data.len() == 0 && out_dims.tensor_len() == 0)|| data.len() % out_dims.tensor_len() == 0);
         let stride = out_dims.tensor_len();
+        let range = data.as_mut_ptr_range();
+        debug_assert!(range.start <= range.end);
         TensorIterMut {
-            rest: data,
+            ptr: range.start,
+            end: range.end,
             stride,
             out_dims,
+            _marker: PhantomData,
         }
     }
 }
 
-impl<'a, T: 'a + DType> Iterator for TensorIterMut<'a, T> {
-    type Item = TensorViewMut<'a, T>;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.rest.is_empty() {
-            None
-        } else {
-            unsafe {
-                // For some reason, split_at_mut results in lifetime errors?
-                // let (chunk, rest) = self.rest.split_at_mut_unchecked(self.stride);
-                let ptr = self.rest.as_mut_ptr();
-                let chunk = std::slice::from_raw_parts_mut(ptr, self.stride);
-                let rest_len = self.rest.len() - self.stride;
-                self.rest = std::slice::from_raw_parts_mut(ptr.add(self.stride), rest_len);
-                Some(TensorViewMut::from_slice_unchecked(
+macro_rules! impl_tensor_iter {
+    ($type_name: ident, $item: ident, $slice_from_raw_parts: ident) => {
+
+        impl<'a, T: 'a> $type_name<'a, T> {
+            #[inline]
+            unsafe fn next_unchecked(&mut self) -> $item<'a, T> {
+                let chunk = std::slice::$slice_from_raw_parts(self.ptr, self.stride);
+                self.ptr = self.ptr.add(self.stride);
+                debug_assert!(self.ptr <= self.end);
+                $item::from_slice_unchecked(
                     chunk,
                     self.out_dims.clone(),
-                ))
+                )
             }
         }
-    }
-}
 
-/*
-pub struct TensorChunkIter<'a, T: DType> {
-    iter: TensorIter<'a, T>,
-    remainder: Option<TensorView<'a, T>>,
-}
-
-impl<'a, T: DType> TensorChunkIter<'a, T> {
-    pub(crate) unsafe fn new_unchecked(data: &'a [T], chunk_dims: Dims) -> Self {
-        debug_assert!(data.len() % chunk_dims.first_axis_stride() == 0);
-        let remainder_len = data.len() % chunk_dims.tensor_len();
-        if remainder_len > 0 {
-            let (data, remainder) = data.split_at_unchecked(data.len() - remainder_len);
-            let rem_first_axis_len = remainder_len / chunk_dims.first_axis_stride();
-            let rem_dim = chunk_dims.with_resized_first_axis(rem_first_axis_len);
-            TensorChunkIter {
-                iter: TensorIter::new_unchecked(data, chunk_dims),
-                remainder: Some(TensorView::from_slice_unchecked(remainder, rem_dim))
+        impl<'a, T: 'a> Iterator for $type_name<'a, T> {
+            type Item = $item<'a, T>;
+            fn next(&mut self) -> Option<Self::Item> {
+                debug_assert!(self.ptr <= self.end);
+                if self.ptr == self.end {
+                    None
+                } else {
+                    Some(unsafe { self.next_unchecked() })
+                }
             }
-        } else {
-            TensorChunkIter {
-                iter: TensorIter::new_unchecked(data, chunk_dims),
-                remainder: None
+            #[inline]
+            fn size_hint(&self) -> (usize, Option<usize>) {
+                let size = self.len();
+                (size, Some(size))
             }
-        }
-    }
-}
-
-impl<'a, T: DType> Iterator for TensorChunkIter<'a, T> {
-    type Item = TensorView<'a, T>;
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(next) = self.iter.next() {
-            Some(next)
-        } else {
-            self.remainder.take()
-        }
-    }
-}
-
-pub struct TensorChunkIterMut<'a, T: DType> {
-    iter: TensorIterMut<'a, T>,
-    remainder: Option<TensorViewMut<'a, T>>,
-}
-
-impl<'a, T: DType> TensorChunkIterMut<'a, T> {
-    pub(crate) unsafe fn new_unchecked(data: &'a mut [T], chunk_dims: Dims) -> Self {
-        debug_assert!(data.len() % chunk_dims.first_axis_stride() == 0);
-        let remainder_len = data.len() % chunk_dims.tensor_len();
-        if remainder_len > 0 {
-            let (data, remainder) = data.split_at_mut_unchecked(data.len() - remainder_len);
-            let rem_first_axis_len = remainder_len / chunk_dims.first_axis_stride();
-            let rem_dim = chunk_dims.with_resized_first_axis(rem_first_axis_len);
-            TensorChunkIterMut {
-                iter: TensorIterMut::new_unchecked(data, chunk_dims),
-                remainder: Some(TensorViewMut::from_slice_unchecked(remainder, rem_dim))
+            #[inline]
+            fn count(self) -> usize where Self: Sized {
+                self.len()
             }
-        } else {
-            TensorChunkIterMut {
-                iter: TensorIterMut::new_unchecked(data, chunk_dims),
-                remainder: None
+            fn nth(&mut self, n: usize) -> Option<Self::Item> {
+                debug_assert!(self.ptr <= self.end);
+                unsafe {
+                    let new_ptr = self.ptr.add(n * self.stride);
+                    if new_ptr >= self.end {
+                        self.ptr = self.end;
+                        None
+                    } else {
+                        self.ptr = new_ptr;
+                        Some(self.next_unchecked())
+                    }
+                }
             }
         }
-    }
+
+        impl<'a, T: 'a> ExactSizeIterator for $type_name<'a, T> {
+            #[inline]
+            fn len(&self) -> usize {
+                if self.ptr == self.end {
+                    0
+                } else {
+                    debug_assert!(self.ptr <= self.end);
+                    debug_assert!(self.stride > 0);
+                    unsafe {
+                        self.end.offset_from(self.ptr) as usize / self.stride
+                    }
+                }
+            }
+        }
+
+    };
 }
 
-impl<'a, T: DType> Iterator for TensorChunkIterMut<'a, T> {
-    type Item = TensorViewMut<'a, T>;
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(next) = self.iter.next() {
-            Some(next)
-        } else {
-            self.remainder.take()
-        }
+impl_tensor_iter!(TensorIter, TensorView, from_raw_parts);
+impl_tensor_iter!(TensorIterMut, TensorViewMut, from_raw_parts_mut);
+
+#[cfg(test)]
+mod test {
+    use crate::tensor;
+    use super::*;
+
+    #[test]
+    fn test_tensor_iter_1d() {
+        let t = tensor![1, 2, 3, 4, 5, 6];
+
     }
+
 }
-*/

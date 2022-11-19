@@ -1,20 +1,36 @@
 use crate::dtype::DType;
-use crate::tensor::{Dims, ITensor, TensorBase};
+use crate::tensor::{Dims, ITensor, TensorBase, TensorBaseMut};
 use std::fmt::Debug;
 
 mod cpu;
 
-pub use cpu::CpuBackend;
+pub use cpu::*;
 
-pub trait Backend: 'static + Debug {
+pub trait TensorTyped {
     type DType: DType;
     type Tensor: ITensor<Self::DType>;
+}
 
-    fn new_tensor<D: Into<Dims>>(&self, dim: D) -> Self::Tensor;
-    fn new_tensor_from_native<T>(&self, native: T) -> Self::Tensor
-    where
-        T: TensorBase<Self::DType>;
+pub trait TensorOps: TensorTyped {
 
+    fn new_tensor<D>(&self, dim: D) -> Self::Tensor where D: Into<Dims>;
+    fn resize_tensor<D>(&self, tensor: &mut Self::Tensor, dims: D) where D: Into<Dims>;
+    fn write_tensor<T>(&self, tensor: &mut Self::Tensor, native_src: &T) where T: TensorBase<Self::DType>;
+    fn read_tensor<T>(&self, tensor: &Self::Tensor, native_dst: &mut T) where T: TensorBaseMut<Self::DType>;
+
+    fn resize_tensor_first_dim(&self, tensor: &mut Self::Tensor, first_dim_size: usize) {
+        self.resize_tensor(tensor, tensor.dims().with_resized_first_axis(first_dim_size));
+    }
+
+    fn new_tensor_from_native<T>(&self, native: T) -> Self::Tensor where T: TensorBase<Self::DType> {
+        let mut tensor = self.new_tensor(native.dims());
+        self.write_tensor(&mut tensor, &native);
+        tensor
+    }
+
+}
+
+pub trait MatrixMultiplication: TensorTyped {
     /// performs a generic matrix multiplication (gemm) operation
     fn matmul(
         &self,
@@ -27,6 +43,9 @@ pub trait Backend: 'static + Debug {
         c: &mut Self::Tensor,
         tc: bool,
     );
+}
+
+pub trait BackendOther: TensorTyped {
 
     fn column_sum(
         &self,
@@ -78,3 +97,5 @@ pub trait Backend: 'static + Debug {
         result_deriv: &mut Self::Tensor,
     );
 }
+
+pub trait Backend: 'static + Debug + TensorTyped + TensorOps + MatrixMultiplication + BackendOther {}

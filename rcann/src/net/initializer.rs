@@ -55,9 +55,10 @@ impl<T: DType> NetInitializer<T> for RandomNetInitializer {
             .map(T::from_f64)
             .collect();
         Tensor::from_vec(vec, dim)
+        
     }
 
     fn get_biases(&mut self, _layer_type: LayerType, dims: Dims, _layer_idx: usize) -> Tensor<T> {
-        Tensor::zero(dims)
+        Tensor::filled_default(dims)
     }
 }

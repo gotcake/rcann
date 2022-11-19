@@ -1,4 +1,4 @@
-#![feature(slice_split_at_unchecked)]
+//#![feature(slice_split_at_unchecked)]
 
 pub mod activation;
 pub mod backend;
@@ -6,6 +6,7 @@ pub mod dtype;
 pub mod loss;
 pub mod net;
 pub mod tensor;
+mod util;
 
 extern crate base64;
 extern crate matrixmultiply;
