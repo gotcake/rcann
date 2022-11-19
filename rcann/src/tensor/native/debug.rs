@@ -131,7 +131,7 @@ impl<'a, T: Debug, D: Dims> Debug for TensorCow<'a, T, D> {
 #[cfg(test)]
 mod test {
     use crate::tensor;
-    use crate::tensor::{Dim2, ITensor, Tensor, Tensor1, Tensor2, Tensor3};
+    use crate::tensor::{Dim2, Tensor, Tensor1, Tensor2, Tensor3};
 
     #[test]
     fn test_empty() {
