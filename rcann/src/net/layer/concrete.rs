@@ -1,6 +1,7 @@
 use super::{FullyConnectedLayer, FullyConnectedLayerParams, Layer, LayerParams};
 use crate::backend::Backend;
 use crate::net::initializer::NetInitializer;
+use crate::tensor::Dim2;
 use std::fmt::{Debug, Formatter};
 
 // This is needed because we can't put dyn LayerParam in a Box :(
@@ -47,17 +48,17 @@ impl<B: Backend> ConcreteLayer<B> {
 }
 
 impl<B: Backend> Layer<B> for ConcreteLayer<B> {
-    fn forward(&mut self, backend: &B, input: &B::Tensor, output: &mut B::Tensor) {
+    fn forward(&mut self, backend: &B, input: &B::Tensor<Dim2>, output: &mut B::Tensor<Dim2>) {
         self.inner_mut().forward(backend, input, output)
     }
 
     fn backprop(
         &mut self,
         backend: &B,
-        input: &B::Tensor,
-        output: &B::Tensor,
-        input_error: Option<&mut B::Tensor>,
-        output_error: &B::Tensor,
+        input: &B::Tensor<Dim2>,
+        output: &B::Tensor<Dim2>,
+        input_error: Option<&mut B::Tensor<Dim2>>,
+        output_error: &B::Tensor<Dim2>,
         learn_rate: B::DType,
         momentum: B::DType,
     ) {

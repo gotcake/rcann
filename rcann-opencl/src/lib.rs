@@ -1,8 +1,7 @@
 extern crate core;
 
-mod kernels;
-mod util;
-pub mod error;
 pub mod backend;
+pub mod error;
+mod kernels;
 mod tensor;
-
+mod util;

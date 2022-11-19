@@ -1,148 +1,165 @@
-use std::mem::ManuallyDrop;
-use crate::tensor::{Dims, ITensor, TensorBase, TensorBaseMut};
-use std::ops::{Deref, DerefMut};
-use std::slice::{Iter, IterMut};
-use std::vec::IntoIter;
+use crate::tensor::dims::{Dim0, Dim1, Dim2, Dim3, Dims};
+use crate::tensor::{ITensor, TensorBase, TensorBaseMut};
 use rand::distributions::Distribution;
 use rand::Rng;
+use std::mem::ManuallyDrop;
+use std::slice::{Iter, IterMut};
+use std::vec::IntoIter;
 
-pub struct Tensor<T> {
+pub struct Tensor<T, D>
+where
+    D: Dims,
+{
     data: Vec<T>,
-    dims: Dims,
+    dims: D,
 }
 
-impl<T> Tensor<T> {
-    pub fn empty() -> Tensor<T> {
-        Tensor {
-            data: Vec::new(),
-            dims: Dims::D1(0),
-        }
-    }
-    pub fn scalar(value: T) -> Tensor<T> {
-        Tensor {
-            data: vec![value],
-            dims: Dims::D0,
-        }
-    }
-    pub fn from_vec<D: Into<Dims>>(data: Vec<T>, dim: D) -> Tensor<T> {
-        let dim = dim.into();
-        assert_eq!(
-            data.len(),
-            dim.tensor_len(),
-            "Mismatched data length {} and dimension {:?}",
-            data.len(),
-            dim
-        );
-        Tensor { data, dims: dim }
+pub type Tensor0<T> = Tensor<T, Dim0>;
+pub type Tensor1<T> = Tensor<T, Dim1>;
+pub type Tensor2<T> = Tensor<T, Dim2>;
+pub type Tensor3<T> = Tensor<T, Dim3>;
+
+impl<T, D: Dims> Tensor<T, D> {
+    pub fn from_vec(data: Vec<T>, dims: D) -> Self {
+        assert_eq!(data.len(), dims.tensor_len());
+        Tensor { data, dims }
     }
 
-    pub fn from_distribution<R, S, D>(rng: &mut R, dist: S, dims: D) -> Self where R: Rng, S: Distribution<T>, D: Into<Dims> {
-        let dims = dims.into();
-        let data: Vec<T> = dist
-            .sample_iter(rng)
-            .take(dims.tensor_len())
-            .collect();
-        Tensor {
-            data,
-            dims,
-        }
+    pub fn from_distribution<R, S>(rng: &mut R, dist: S, dims: D) -> Self
+    where
+        R: Rng,
+        S: Distribution<T>,
+    {
+        let data: Vec<T> = dist.sample_iter(rng).take(dims.tensor_len()).collect();
+        Tensor { data, dims }
     }
 
     #[inline]
-    pub(super) unsafe fn from_vec_unchecked(data: Vec<T>, dim: Dims) -> Tensor<T> {
+    pub(super) unsafe fn from_vec_unchecked(data: Vec<T>, dim: D) -> Self {
         debug_assert_eq!(data.len(), dim.tensor_len());
         Tensor { data, dims: dim }
     }
+}
 
-    pub fn from_vec_1d(vec: Vec<T>) -> Tensor<T> {
-        let len = vec.len();
-        unsafe { Tensor::from_vec_unchecked(vec, Dims::D1(len)) }
+impl<T> Tensor0<T> {
+    pub fn scalar(value: T) -> Self {
+        Tensor {
+            data: vec![value],
+            dims: Dim0,
+        }
     }
+}
 
-    pub fn from_vec_2d<const N: usize>(vec: Vec<[T; N]>) -> Tensor<T> {
+impl<T> Tensor1<T> {
+    pub fn empty_1d() -> Self {
+        Tensor {
+            data: Vec::new(),
+            dims: Dim1(0),
+        }
+    }
+    pub fn from_vec_1d(data: Vec<T>) -> Self {
+        let len = data.len();
+        Tensor {
+            data,
+            dims: Dim1(len),
+        }
+    }
+}
+
+impl<T> Tensor2<T> {
+    pub fn empty_2d() -> Self {
+        Tensor {
+            data: Vec::new(),
+            dims: Dim2(0, 0),
+        }
+    }
+    pub fn from_vec_2d<const N: usize>(vec: Vec<[T; N]>) -> Self {
         unsafe {
             let mut vec = ManuallyDrop::new(vec);
             let (ptr, len, cap) = (vec.as_mut_ptr(), vec.len(), vec.capacity());
-            let data= Vec::from_raw_parts(ptr as *mut T, len * N, cap * N);
-            Tensor::from_vec_unchecked(data, Dims::D2(vec.len(), N))
+            let data = Vec::from_raw_parts(ptr as *mut T, len * N, cap * N);
+            Tensor::from_vec_unchecked(data, Dim2(vec.len(), N))
         }
     }
+}
 
-    pub fn from_vec_3d<const N: usize, const M: usize>(vec: Vec<[[T; M]; N]>) -> Tensor<T> {
+impl<T> Tensor3<T> {
+    pub fn empty_3d() -> Self {
+        Tensor {
+            data: Vec::new(),
+            dims: Dim3(0, 0, 0),
+        }
+    }
+    pub fn from_vec_3d<const N: usize, const M: usize>(vec: Vec<[[T; M]; N]>) -> Self {
         let inner_size: usize = N * M;
         unsafe {
             let mut vec = ManuallyDrop::new(vec);
             let (ptr, len, cap) = (vec.as_mut_ptr(), vec.len(), vec.capacity());
-            let data= Vec::from_raw_parts(ptr as *mut T, len * inner_size, cap * inner_size);
-            Tensor::from_vec_unchecked(data, Dims::D3(vec.len(), N, M))
+            let data = Vec::from_raw_parts(ptr as *mut T, len * inner_size, cap * inner_size);
+            Tensor::from_vec_unchecked(data, Dim3(vec.len(), N, M))
         }
     }
-
 }
 
-impl<T: Clone> Tensor<T> {
-    pub fn filled<D>(value: T, dims: D) -> Self where D: Into<Dims> {
-        let dims = dims.into();
+impl<T: Clone, D: Dims> Tensor<T, D> {
+    pub fn filled(value: T, dims: D) -> Self {
         Tensor {
             data: vec![value; dims.tensor_len()],
-            dims
+            dims,
         }
     }
-    pub fn resize_fill<D>(&mut self, dims: D, fill: T) where D: Into<Dims> {
-        let dims = dims.into();
+    pub fn resize_fill(&mut self, fill: T, dims: D) {
         if self.dims != dims {
             let len = self.data.len();
             let new_len = dims.tensor_len();
             if len != new_len {
                 self.data.resize(new_len, fill);
             }
+            self.dims = dims;
         }
     }
+    pub fn fill(&mut self, fill: T) {
+        self.data.fill(fill);
+    }
 }
 
-
-impl<T: Default + Clone> Tensor<T> {
-    pub fn filled_default<D>(dims: D) -> Self where D: Into<Dims> {
+impl<T: Default + Clone, D: Dims> Tensor<T, D> {
+    pub fn filled_default(dims: D) -> Self {
         Self::filled(T::default(), dims)
     }
-    pub fn resize_fill_default<D>(&mut self, dims: D) where D: Into<Dims> {
-        self.resize_fill(dims, T::default());
+    pub fn resize_fill_default(&mut self, dims: D) {
+        self.resize_fill(T::default(), dims);
+    }
+    pub fn fill_default(&mut self) {
+        self.data.fill(T::default());
     }
 }
 
-impl<T> ITensor<T> for Tensor<T> {
+impl<T, D: Dims> ITensor<T, D> for Tensor<T, D> {
     #[inline]
     fn len(&self) -> usize {
         self.data.len()
     }
     #[inline]
-    fn dims(&self) -> &Dims {
+    fn dims(&self) -> &D {
         &self.dims
     }
 }
 
-impl<T> Deref for Tensor<T> {
-    type Target = [T];
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl<T> AsRef<[T]> for Tensor<T> {
+impl<T, D: Dims> AsRef<[T]> for Tensor<T, D> {
     #[inline]
     fn as_ref(&self) -> &[T] {
         &self.data
     }
 }
 
-impl<T> TensorBase<T> for Tensor<T> {
+impl<T, D: Dims> TensorBase<T, D> for Tensor<T, D> {
     #[inline]
     fn is_owned(&self) -> bool {
         false
     }
     #[inline]
-    fn into_owned(self) -> Tensor<T> {
+    fn into_owned(self) -> Tensor<T, D> {
         self
     }
     #[inline]
@@ -151,23 +168,16 @@ impl<T> TensorBase<T> for Tensor<T> {
     }
 }
 
-impl<T> DerefMut for Tensor<T> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
-    }
-}
-
-impl<T> AsMut<[T]> for Tensor<T> {
+impl<T, D: Dims> AsMut<[T]> for Tensor<T, D> {
     #[inline]
     fn as_mut(&mut self) -> &mut [T] {
         &mut self.data
     }
 }
 
-impl<T> TensorBaseMut<T> for Tensor<T> {}
+impl<T, D: Dims> TensorBaseMut<T, D> for Tensor<T, D> {}
 
-impl<'a, T> IntoIterator for &'a Tensor<T> {
+impl<'a, T, D: Dims> IntoIterator for &'a Tensor<T, D> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
     #[inline]
@@ -176,7 +186,7 @@ impl<'a, T> IntoIterator for &'a Tensor<T> {
     }
 }
 
-impl<'a, T> IntoIterator for &'a mut Tensor<T> {
+impl<'a, T, D: Dims> IntoIterator for &'a mut Tensor<T, D> {
     type Item = &'a mut T;
     type IntoIter = IterMut<'a, T>;
     #[inline]
@@ -185,7 +195,7 @@ impl<'a, T> IntoIterator for &'a mut Tensor<T> {
     }
 }
 
-impl<T> IntoIterator for Tensor<T> {
+impl<T, D: Dims> IntoIterator for Tensor<T, D> {
     type Item = T;
     type IntoIter = IntoIter<T>;
     #[inline]
@@ -197,12 +207,12 @@ impl<T> IntoIterator for Tensor<T> {
 #[macro_export]
 macro_rules! tensor {
     ($([$([$($x:expr),* $(,)*]),+ $(,)*]),+ $(,)*) => {
-        $crate::tensor::Tensor::from_vec_3d(vec![$([$([$($x,)*],)*],)*])
+        $crate::tensor::Tensor3::from_vec_3d(vec![$([$([$($x,)*],)*],)*])
     };
     ($([$($x:expr),* $(,)*]),+ $(,)*) => {
-        $crate::tensor::Tensor::from_vec_2d(vec![$([$($x,)*],)*])
+        $crate::tensor::Tensor2::from_vec_2d(vec![$([$($x,)*],)*])
     };
     ($($x:expr),* $(,)*) => {
-        $crate::tensor::Tensor::from_vec_1d(vec![$($x,)*])
+        $crate::tensor::Tensor1::from_vec_1d(vec![$($x,)*])
     };
 }

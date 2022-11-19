@@ -1,8 +1,8 @@
-use crate::tensor::{ITensor, Tensor, TensorCow, TensorView, TensorViewMut};
+use crate::tensor::{Dim1, Dim2, Dims, ITensor, Tensor, TensorCow, TensorView, TensorViewMut};
 
 macro_rules! impl_tensor_extras {
     ($type_name: ident $(, $l: lifetime )?) => {
-        impl<$($l,)?T> std::ops::Index<usize> for $type_name<$($l,)?T> {
+        impl<$($l,)?T, D: Dims> std::ops::Index<usize> for $type_name<$($l,)?T, D> {
             type Output = T;
             #[inline]
             fn index(&self, index: usize) -> &Self::Output {
@@ -10,27 +10,36 @@ macro_rules! impl_tensor_extras {
             }
         }
 
-        impl<$($l,)?T> PartialEq<Tensor<T>> for $type_name<$($l,)?T> where T: PartialEq {
-            fn eq(&self, other: &Tensor<T>) -> bool {
+        impl<$($l,)?T, D: Dims> PartialEq<Tensor<T, D>> for $type_name<$($l,)?T, D> where T: PartialEq {
+            fn eq(&self, other: &Tensor<T, D>) -> bool {
                 self.dims() == other.dims() && self.as_ref() == other.as_ref()
             }
         }
 
-        impl<$($l,)?'b, T> PartialEq<TensorView<'b, T>> for $type_name<$($l,)?T> where T: PartialEq {
-            fn eq(&self, other: &TensorView<'b, T>) -> bool {
+        impl<$($l,)?'b, T, D: Dims> PartialEq<TensorView<'b, T, D>> for $type_name<$($l,)?T, D> where T: PartialEq {
+            fn eq(&self, other: &TensorView<'b, T, D>) -> bool {
                 self.dims() == other.dims() && self.as_ref() == other.as_ref()
             }
         }
 
-        impl<$($l,)?'b, T> PartialEq<TensorViewMut<'b, T>> for $type_name<$($l,)?T> where T: PartialEq {
-            fn eq(&self, other: &TensorViewMut<'b, T>) -> bool {
+        impl<$($l,)?'b, T, D: Dims> PartialEq<TensorViewMut<'b, T, D>> for $type_name<$($l,)?T, D> where T: PartialEq {
+            fn eq(&self, other: &TensorViewMut<'b, T, D>) -> bool {
                 self.dims() == other.dims() && self.as_ref() == other.as_ref()
             }
         }
 
-        impl<$($l,)?'b, T> PartialEq<TensorCow<'b, T>> for $type_name<$($l,)?T> where T: PartialEq {
-            fn eq(&self, other: &TensorCow<'b, T>) -> bool {
+        impl<$($l,)?'b, T, D: Dims> PartialEq<TensorCow<'b, T, D>> for $type_name<$($l,)?T, D> where T: PartialEq {
+            fn eq(&self, other: &TensorCow<'b, T, D>) -> bool {
                 self.dims() == other.dims() && self.as_ref() == other.as_ref()
+            }
+        }
+
+        impl<$($l,)?T> $type_name<$($l,)?T, Dim1> {
+            pub fn as_row_matrix(&self) -> TensorView<T, Dim2> {
+                unsafe { TensorView::from_slice_unchecked(self.as_ref(), Dim2(1, self.len()) )}
+            }
+            pub fn as_col_matrix(&self) -> TensorView<T, Dim2> {
+                unsafe { TensorView::from_slice_unchecked(self.as_ref(), Dim2(self.len(), 1) )}
             }
         }
 
@@ -39,10 +48,20 @@ macro_rules! impl_tensor_extras {
 
 macro_rules! impl_tensor_extras_mut {
     ($type_name: ident $(, $l: lifetime )?) => {
-        impl<$($l,)?T> std::ops::IndexMut<usize> for $type_name<$($l,)?T> {
+        impl<$($l,)?T, D: Dims> std::ops::IndexMut<usize> for $type_name<$($l,)?T, D> {
             #[inline]
             fn index_mut(&mut self, index: usize) -> &mut Self::Output {
                 self.as_mut().index_mut(index)
+            }
+        }
+        impl<$($l,)?T> $type_name<$($l,)?T, Dim1> {
+            pub fn as_row_matrix_mut(&mut self) -> TensorViewMut<T, Dim2> {
+                let dims = Dim2(1, self.len());
+                unsafe { TensorViewMut::from_slice_unchecked(self.as_mut(),  dims) }
+            }
+            pub fn as_col_matrix_mut(&mut self) -> TensorViewMut<T, Dim2> {
+                let dims = Dim2(self.len(), 1);
+                unsafe { TensorViewMut::from_slice_unchecked(self.as_mut(), dims) }
             }
         }
     };
@@ -54,4 +73,3 @@ impl_tensor_extras!(TensorView, 'a);
 impl_tensor_extras!(TensorViewMut, 'a);
 impl_tensor_extras_mut!(TensorViewMut, 'a);
 impl_tensor_extras!(TensorCow, 'a);
-

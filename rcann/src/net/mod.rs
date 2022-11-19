@@ -2,7 +2,7 @@ use crate::backend::Backend;
 use crate::loss::LossFn;
 use crate::net::initializer::{NetInitializer, RandomNetInitializer};
 use crate::net::layer::{ConcreteLayer, ConcreteLayerParams, Layer, LayerParams};
-use crate::tensor::{Dims, ITensor};
+use crate::tensor::{Dim1, Dim2, ITensor};
 use std::fmt::{Debug, Formatter};
 use std::iter::zip;
 
@@ -12,17 +12,17 @@ pub mod layer;
 pub struct Net<B: Backend> {
     backend: B,
     first: ConcreteLayer<B>,
-    first_output: B::Tensor,
+    first_output: B::Tensor<Dim2>,
     hidden: Box<[ConcreteLayer<B>]>,
-    hidden_outputs: Box<[B::Tensor]>,
+    hidden_outputs: Box<[B::Tensor<Dim2>]>,
     last: ConcreteLayer<B>,
-    last_output: B::Tensor,
+    last_output: B::Tensor<Dim2>,
 
     // training only
-    hidden_input_error: Box<[B::Tensor]>,
-    last_input_error: B::Tensor,
-    output_error_buff: B::Tensor,
-    output_error_deriv_buff: B::Tensor,
+    hidden_input_error: Box<[B::Tensor<Dim2>]>,
+    last_input_error: B::Tensor<Dim2>,
+    output_error_buff: B::Tensor<Dim1>,
+    output_error_deriv_buff: B::Tensor<Dim2>,
 }
 
 impl<B: Backend> Net<B> {
@@ -32,19 +32,19 @@ impl<B: Backend> Net<B> {
         hidden: Box<[ConcreteLayer<B>]>,
         last: ConcreteLayer<B>,
     ) -> Self {
-        let first_output = backend.new_tensor((0, first.output_size()));
+        let first_output = backend.new_tensor(Dim2(0, first.output_size()));
         let hidden_outputs = hidden
             .iter()
-            .map(|l| backend.new_tensor((0, l.output_size())))
+            .map(|l| backend.new_tensor(Dim2(0, l.output_size())))
             .collect();
-        let last_output = backend.new_tensor((0, last.output_size()));
+        let last_output = backend.new_tensor(Dim2(0, last.output_size()));
         let hidden_input_error = hidden
             .iter()
-            .map(|l| backend.new_tensor((0, l.input_size())))
+            .map(|l| backend.new_tensor(Dim2(0, l.input_size())))
             .collect();
-        let last_input_error = backend.new_tensor((0, last.input_size()));
-        let output_error_buff = backend.new_tensor(0);
-        let output_error_deriv_buff = backend.new_tensor((0, last.output_size()));
+        let last_input_error = backend.new_tensor(Dim2(0, last.input_size()));
+        let output_error_buff = backend.new_tensor(Dim1(0));
+        let output_error_deriv_buff = backend.new_tensor(Dim2(0, last.output_size()));
         Net {
             backend,
             first,
@@ -60,12 +60,12 @@ impl<B: Backend> Net<B> {
         }
     }
 
-    pub fn predict(&mut self, input: &B::Tensor) -> &B::Tensor {
-        let num_rows = input.dims().first();
+    pub fn predict(&mut self, input: &B::Tensor<Dim2>) -> &B::Tensor<Dim2> {
+        let num_rows = input.dims().rows();
         assert_eq!(
-            input.dims(),
-            &Dims::D2(num_rows, self.input_size()),
-            "Invalid dimensions for input tensor"
+            input.dims().cols(),
+            self.input_size(),
+            "Invalid number of columns for input tensor"
         );
         self.forward(num_rows, input);
         &self.last_output
@@ -73,24 +73,24 @@ impl<B: Backend> Net<B> {
 
     pub fn train_batch(
         &mut self,
-        input: &B::Tensor,
-        expected: &B::Tensor,
+        input: &B::Tensor<Dim2>,
+        expected: &B::Tensor<Dim2>,
         loss: &LossFn,
         learn_rate: B::DType,
         momentum: B::DType,
     ) -> TrainBatchResult<B> {
-        let num_rows = input.dims().first();
+        let num_rows = input.dims().rows();
         let input_size = self.input_size();
         let output_size = self.output_size();
 
         assert_eq!(
-            input.dims(),
-            &Dims::D2(num_rows, input_size),
-            "Invalid dimensions for input tensor"
+            input.dims().cols(),
+            input_size,
+            "Invalid number of columns for input tensor"
         );
         assert_eq!(
             expected.dims(),
-            &Dims::D2(num_rows, output_size),
+            &Dim2(num_rows, output_size),
             "Invalid dimensions for expected tensor"
         );
 
@@ -103,8 +103,9 @@ impl<B: Backend> Net<B> {
         }
     }
 
-    fn forward(&mut self, num_rows: usize, input: &B::Tensor) {
-        self.backend.resize_tensor_first_dim(&mut self.first_output, num_rows);
+    fn forward(&mut self, num_rows: usize, input: &B::Tensor<Dim2>) {
+        self.backend
+            .resize_tensor_first_dim(&mut self.first_output, num_rows);
         self.first
             .forward(&self.backend, input, &mut self.first_output);
 
@@ -115,21 +116,25 @@ impl<B: Backend> Net<B> {
             input = output;
         }
 
-        self.backend.resize_tensor_first_dim(&mut self.last_output, num_rows);
-        self.last.forward(&self.backend, input, &mut self.last_output);
+        self.backend
+            .resize_tensor_first_dim(&mut self.last_output, num_rows);
+        self.last
+            .forward(&self.backend, input, &mut self.last_output);
     }
 
     fn backprop(
         &mut self,
         num_rows: usize,
-        input: &B::Tensor,
-        expected: &B::Tensor,
+        input: &B::Tensor<Dim2>,
+        expected: &B::Tensor<Dim2>,
         loss: &LossFn,
         learn_rate: B::DType,
         momentum: B::DType,
     ) {
-        self.backend.resize_tensor(&mut self.output_error_buff, num_rows);
-        self.backend.resize_tensor_first_dim(&mut self.output_error_deriv_buff, num_rows);
+        self.backend
+            .resize_tensor(&mut self.output_error_buff, Dim1(num_rows));
+        self.backend
+            .resize_tensor_first_dim(&mut self.output_error_deriv_buff, num_rows);
         loss.compute(
             &self.backend,
             &self.last_output,
@@ -143,7 +148,8 @@ impl<B: Backend> Net<B> {
             Some(last_hidden_output) => last_hidden_output,
         };
 
-        self.backend.resize_tensor_first_dim(&mut self.last_input_error, num_rows);
+        self.backend
+            .resize_tensor_first_dim(&mut self.last_input_error, num_rows);
         self.last.backprop(
             &self.backend,
             last_input,
@@ -280,8 +286,8 @@ impl<B: Backend> NetBuilder<B> {
 }
 
 pub struct TrainBatchResult<'a, B: Backend> {
-    pub output: &'a B::Tensor,
-    pub error: &'a B::Tensor,
+    pub output: &'a B::Tensor<Dim2>,
+    pub error: &'a B::Tensor<Dim1>,
 }
 
 impl<B: Backend> Debug for Net<B> {

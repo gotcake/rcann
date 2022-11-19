@@ -1,9 +1,9 @@
-use opencl3::command_queue::{CL_QUEUE_PROFILING_ENABLE, CommandQueue};
+use crate::error::Error;
+use opencl3::command_queue::{CommandQueue, CL_QUEUE_PROFILING_ENABLE};
 use opencl3::context::Context;
-use opencl3::device::{CL_DEVICE_TYPE_GPU, Device, get_all_devices};
+use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
 use opencl3::kernel::Kernel;
 use opencl3::program::Program;
-use crate::error::Error;
 
 pub struct ContextWrapper {
     context: Context,
@@ -21,8 +21,7 @@ pub fn get_default_device() -> Result<Device> {
 }
 
 pub fn get_context(device: &Device) -> Result<Context> {
-    Context::from_device(&device)
-        .map_err(|err| Error::from_cl_err(err, "Failed to get context"))
+    Context::from_device(&device).map_err(|err| Error::from_cl_err(err, "Failed to get context"))
 }
 
 pub fn create_program(context: &Context, source: &str) -> Result<Program> {
@@ -31,8 +30,8 @@ pub fn create_program(context: &Context, source: &str) -> Result<Program> {
 }
 
 pub fn create_kernel(program: &Program, name: &str) -> Result<Kernel> {
-   Kernel::create(&program, name)
-       .map_err(|err| Error::from_cl_err(err, format!("Failed to create kernel: {name}")))
+    Kernel::create(&program, name)
+        .map_err(|err| Error::from_cl_err(err, format!("Failed to create kernel: {name}")))
 }
 
 pub fn create_queue(context: &Context) -> Result<CommandQueue> {

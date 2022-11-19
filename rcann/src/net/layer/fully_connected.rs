@@ -2,7 +2,7 @@ use crate::activation::ActivationFn;
 use crate::backend::Backend;
 use crate::dtype::DType;
 use crate::net::layer::{ConcreteLayerParams, Layer, LayerParams, LayerType, NetInitializer};
-use crate::tensor::{Dims, ITensor};
+use crate::tensor::{Dim1, Dim2, ITensor, Tensor1, Tensor2};
 use std::fmt::{Debug, Formatter};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -22,21 +22,27 @@ impl<B: Backend> LayerParams<B> for FullyConnectedLayerParams {
         initializer: &mut dyn NetInitializer<B::DType>,
     ) -> Self::Layer where {
         let output_size = self.size;
-        let weights = initializer.get_weights(
-            LayerType::FullyConnected,
-            Dims::D2(output_size, input_size),
-            layer_idx,
-            input_size,
-            output_size,
+        let weights = Tensor2::from_vec(
+            initializer.get_weights(
+                LayerType::FullyConnected,
+                output_size * input_size,
+                layer_idx,
+                input_size,
+                output_size,
+            ),
+            Dim2(output_size, input_size),
         );
-        let biases =
-            initializer.get_biases(LayerType::FullyConnected, Dims::D1(output_size), layer_idx);
+        let biases = Tensor1::from_vec_1d(initializer.get_biases(
+            LayerType::FullyConnected,
+            output_size,
+            layer_idx,
+        ));
         FullyConnectedLayer {
             input_size,
             output_size,
             weights: backend.new_tensor_from_native(weights),
             biases: backend.new_tensor_from_native(biases),
-            activation: backend.new_tensor((0, output_size)),
+            activation: backend.new_tensor(Dim2(0, output_size)),
             training_tensors: None,
             activation_fn: self.activation_fn,
         }
@@ -52,9 +58,9 @@ impl Into<ConcreteLayerParams> for FullyConnectedLayerParams {
 pub struct FullyConnectedLayer<B: Backend> {
     input_size: usize,
     output_size: usize,
-    weights: B::Tensor,
-    biases: B::Tensor,
-    activation: B::Tensor,
+    weights: B::Tensor<Dim2>,
+    biases: B::Tensor<Dim1>,
+    activation: B::Tensor<Dim2>,
     training_tensors: Option<TrainingTensors<B>>,
     activation_fn: ActivationFn,
 }
@@ -69,9 +75,9 @@ impl<B: Backend> FullyConnectedLayer<B> {
         FullyConnectedLayer {
             input_size,
             output_size,
-            weights: backend.new_tensor((output_size, input_size)),
-            biases: backend.new_tensor(output_size),
-            activation: backend.new_tensor((0, output_size)),
+            weights: backend.new_tensor(Dim2(output_size, input_size)),
+            biases: backend.new_tensor(Dim1(output_size)),
+            activation: backend.new_tensor(Dim2(0, output_size)),
             training_tensors: None,
             activation_fn,
         }
@@ -79,33 +85,33 @@ impl<B: Backend> FullyConnectedLayer<B> {
 }
 
 struct TrainingTensors<B: Backend> {
-    activation_error: B::Tensor,
-    weight_error: B::Tensor,
-    bias_error: B::Tensor,
+    activation_error: B::Tensor<Dim2>,
+    weight_error: B::Tensor<Dim2>,
+    bias_error: B::Tensor<Dim1>,
 }
 
 impl<B: Backend> TrainingTensors<B> {
     fn new(backend: &B, num_rows: usize, size: usize, prev_size: usize) -> Self {
         TrainingTensors {
-            activation_error: backend.new_tensor((num_rows, size)),
-            weight_error: backend.new_tensor((size, prev_size)),
-            bias_error: backend.new_tensor(size),
+            activation_error: backend.new_tensor(Dim2(num_rows, size)),
+            weight_error: backend.new_tensor(Dim2(size, prev_size)),
+            bias_error: backend.new_tensor(Dim1(size)),
         }
     }
 }
 
 impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
-    fn forward(&mut self, backend: &B, input: &B::Tensor, output: &mut B::Tensor) {
-        let num_rows = input.dims().first();
+    fn forward(&mut self, backend: &B, input: &B::Tensor<Dim2>, output: &mut B::Tensor<Dim2>) {
+        let num_rows = input.dims().rows();
 
         assert_eq!(
-            input.dims(),
-            &Dims::D2(num_rows, self.input_size),
-            "Invalid dimensions for input tensor"
+            input.dims().cols(),
+            self.input_size,
+            "Invalid number of columns for input tensor"
         );
         assert_eq!(
             output.dims(),
-            &Dims::D2(num_rows, self.output_size),
+            &Dim2(num_rows, self.output_size),
             "Invalid dimensions for output tensor"
         );
 
@@ -128,28 +134,28 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
     fn backprop(
         &mut self,
         backend: &B,
-        input: &B::Tensor,
-        output: &B::Tensor,
-        input_error: Option<&mut B::Tensor>,
-        out_error: &B::Tensor,
+        input: &B::Tensor<Dim2>,
+        output: &B::Tensor<Dim2>,
+        input_error: Option<&mut B::Tensor<Dim2>>,
+        out_error: &B::Tensor<Dim2>,
         learn_rate: B::DType,
         momentum: B::DType,
     ) {
-        let num_rows = input.dims().first();
+        let num_rows = input.dims().rows();
 
         assert_eq!(
-            input.dims(),
-            &Dims::D2(num_rows, self.input_size),
-            "Invalid dimensions for input tensor"
+            input.dims().cols(),
+            self.input_size,
+            "Invalid number of columns for input tensor"
         );
         assert_eq!(
             output.dims(),
-            &Dims::D2(num_rows, self.output_size),
+            &Dim2(num_rows, self.output_size),
             "Invalid dimensions for output tensor"
         );
         assert_eq!(
             out_error.dims(),
-            &Dims::D2(num_rows, self.output_size),
+            &Dim2(num_rows, self.output_size),
             "Invalid dimensions for out_error tensor"
         );
 
@@ -167,7 +173,11 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
         );
 
         if let Some(input_error) = input_error {
-            assert_eq!(input_error.dims(), &Dims::D2(num_rows, self.input_size));
+            assert_eq!(
+                input_error.dims(),
+                &Dim2(num_rows, self.input_size),
+                "Invalid dimensions for input_error"
+            );
             backend.matmul(
                 B::DType::ONE,
                 &tt.activation_error,

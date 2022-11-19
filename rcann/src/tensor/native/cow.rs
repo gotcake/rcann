@@ -1,10 +1,11 @@
+use crate::tensor::dims::{Dim0, Dim1, Dim2, Dim3, Dims};
+use crate::tensor::{ITensor, Tensor, TensorBase};
 use std::ops::Deref;
 use std::slice::Iter;
-use crate::tensor::{Dims, ITensor, Tensor, TensorBase};
 
-enum Holder<'a, T> {
+enum Holder<'a, T: 'a> {
     Borrowed(&'a [T]),
-    Owned(Vec<T>)
+    Owned(Vec<T>),
 }
 
 impl<'a, T> Holder<'a, T> {
@@ -12,10 +13,13 @@ impl<'a, T> Holder<'a, T> {
         use Holder::*;
         match self {
             Borrowed(_) => false,
-            Owned(_) => true
+            Owned(_) => true,
         }
     }
-    fn into_owned(self) -> Vec<T> where T: Clone {
+    fn into_owned(self) -> Vec<T>
+    where
+        T: Clone,
+    {
         use Holder::*;
         match self {
             Borrowed(data) => data.to_vec(),
@@ -36,14 +40,18 @@ impl<'a, T> Deref for Holder<'a, T> {
     }
 }
 
-pub struct TensorCow<'a, T> {
+pub struct TensorCow<'a, T: 'a, D: Dims> {
     data: Holder<'a, T>,
-    dims: Dims,
+    dims: D,
 }
 
-impl<'a, T> TensorCow<'a, T> {
-    pub fn borrowed<D>(data: &'a [T], dims: D) -> Self where D: Into<Dims> {
-        let dims = dims.into();
+pub type TensorCow0<'a, T> = TensorCow<'a, T, Dim0>;
+pub type TensorCow1<'a, T> = TensorCow<'a, T, Dim1>;
+pub type TensorCow2<'a, T> = TensorCow<'a, T, Dim2>;
+pub type TensorCow3<'a, T> = TensorCow<'a, T, Dim3>;
+
+impl<'a, T: 'a, D: Dims> TensorCow<'a, T, D> {
+    pub fn borrowed(data: &'a [T], dims: D) -> Self {
         assert_eq!(
             data.len(),
             dims.tensor_len(),
@@ -51,19 +59,24 @@ impl<'a, T> TensorCow<'a, T> {
             data.len(),
             dims
         );
-        TensorCow { data: Holder::Borrowed(data), dims }
+        TensorCow {
+            data: Holder::Borrowed(data),
+            dims,
+        }
     }
 
     #[inline]
-    pub(super) unsafe fn borrowed_unchecked(data: &'a [T], dims: Dims) -> Self {
+    pub(super) unsafe fn borrowed_unchecked(data: &'a [T], dims: D) -> Self {
         debug_assert_eq!(data.len(), dims.tensor_len());
-        TensorCow { data: Holder::Borrowed(data), dims }
+        TensorCow {
+            data: Holder::Borrowed(data),
+            dims,
+        }
     }
 }
 
-impl<T> TensorCow<'static, T> {
-    pub fn owned<D>(data: Vec<T>, dims: D) -> Self where D: Into<Dims> {
-        let dims = dims.into();
+impl<T, D: Dims> TensorCow<'static, T, D> {
+    pub fn owned(data: Vec<T>, dims: D) -> Self {
         assert_eq!(
             data.len(),
             dims.tensor_len(),
@@ -71,59 +84,62 @@ impl<T> TensorCow<'static, T> {
             data.len(),
             dims
         );
-        TensorCow { data: Holder::Owned(data), dims }
+        TensorCow {
+            data: Holder::Owned(data),
+            dims,
+        }
     }
     #[inline]
-    pub(super) unsafe fn owned_unchecked(data: Vec<T>, dims: Dims) -> Self {
+    pub(super) unsafe fn owned_unchecked(data: Vec<T>, dims: D) -> Self {
         debug_assert_eq!(data.len(), dims.tensor_len());
-        TensorCow { data: Holder::Owned(data), dims }
+        TensorCow {
+            data: Holder::Owned(data),
+            dims,
+        }
     }
 }
 
-impl<'a, T> ITensor<T> for TensorCow<'a, T> {
+impl<'a, T: 'a, D: Dims> ITensor<T, D> for TensorCow<'a, T, D> {
     #[inline]
     fn len(&self) -> usize {
         self.data.len()
     }
     #[inline]
-    fn dims(&self) -> &Dims {
+    fn dims(&self) -> &D {
         &self.dims
     }
 }
 
-impl<'a, T> Deref for TensorCow<'a, T> {
-    type Target = [T];
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl<'a, T> AsRef<[T]> for TensorCow<'a, T> {
+impl<'a, T: 'a, D: Dims> AsRef<[T]> for TensorCow<'a, T, D> {
     #[inline]
     fn as_ref(&self) -> &[T] {
         &self.data
     }
 }
 
-impl<'a, T> TensorBase<T> for TensorCow<'a, T> {
-
+impl<'a, T: 'a, D: Dims> TensorBase<T, D> for TensorCow<'a, T, D> {
     #[inline]
     fn is_owned(&self) -> bool {
         self.data.is_owned()
     }
 
-    fn into_owned(self) -> Tensor<T> where T: Clone {
+    fn into_owned(self) -> Tensor<T, D>
+    where
+        T: Clone,
+    {
         unsafe { Tensor::from_vec_unchecked(self.data.into_owned(), self.dims) }
     }
 
     #[inline]
-    fn into_vec(self) -> Vec<T> where T: Clone {
+    fn into_vec(self) -> Vec<T>
+    where
+        T: Clone,
+    {
         self.data.into_owned()
     }
 }
 
-impl<'a, T> IntoIterator for &'a TensorCow<'a, T> {
+impl<'a, T: 'a, D: Dims> IntoIterator for &'a TensorCow<'a, T, D> {
     type Item = &'a T;
     type IntoIter = Iter<'a, T>;
     #[inline]
@@ -131,5 +147,3 @@ impl<'a, T> IntoIterator for &'a TensorCow<'a, T> {
         self.data.iter()
     }
 }
-
-

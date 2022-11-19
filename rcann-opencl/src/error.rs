@@ -13,7 +13,10 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn from_cl_err<M>(err: ClError, msg: M) -> Self where M: Into<String> {
+    pub fn from_cl_err<M>(err: ClError, msg: M) -> Self
+    where
+        M: Into<String>,
+    {
         Error::ClError {
             code: err.0,
             code_str: err.to_string(),
@@ -31,5 +34,3 @@ impl From<ClError> for Error {
         }
     }
 }
-
-

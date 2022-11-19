@@ -1,5 +1,6 @@
 use crate::backend::Backend;
 use crate::dtype::DType;
+use crate::tensor::Dim2;
 use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
@@ -13,7 +14,12 @@ pub enum ActivationFn {
 }
 
 impl ActivationFn {
-    pub fn compute<B: Backend>(&self, backend: &B, activation: &B::Tensor, output: &mut B::Tensor) {
+    pub fn compute<B: Backend>(
+        &self,
+        backend: &B,
+        activation: &B::Tensor<Dim2>,
+        output: &mut B::Tensor<Dim2>,
+    ) {
         match self {
             ActivationFn::Sigmoid => backend.sigmoid(activation, output),
             &ActivationFn::ReLU { leak } => {
@@ -26,10 +32,10 @@ impl ActivationFn {
     pub fn compute_error<B: Backend>(
         &self,
         backend: &B,
-        activation: &B::Tensor,
-        output: &B::Tensor,
-        out_error: &B::Tensor,
-        result: &mut B::Tensor,
+        activation: &B::Tensor<Dim2>,
+        output: &B::Tensor<Dim2>,
+        out_error: &B::Tensor<Dim2>,
+        result: &mut B::Tensor<Dim2>,
     ) {
         match self {
             ActivationFn::Sigmoid => backend.sigmoid_error(output, out_error, result),

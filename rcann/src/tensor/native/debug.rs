@@ -1,5 +1,5 @@
-use std::fmt::{Debug, DebugList, Formatter, Write, write};
-use crate::tensor::{ITensor, Tensor, TensorBase, TensorCow, TensorView, TensorViewMut};
+use crate::tensor::{Dims, ITensor, Tensor, TensorBase, TensorCow, TensorView, TensorViewMut};
+use std::fmt::{Debug, Formatter, Write};
 
 fn fmt_separated<I, T>(
     iter: &mut I,
@@ -8,7 +8,8 @@ fn fmt_separated<I, T>(
     fmt: &mut impl FnMut(T, &mut Formatter) -> std::fmt::Result,
     limit: usize,
 ) -> std::fmt::Result
-    where I: Iterator<Item=T>,
+where
+    I: Iterator<Item = T>,
 {
     let mut remaining = limit;
     let mut first = true;
@@ -31,9 +32,11 @@ fn fmt_separated_max<I, T>(
     max: usize,
     f: &mut Formatter,
     sep: &str,
-    fmt: &mut impl FnMut(T, &mut Formatter) -> std::fmt::Result
+    fmt: &mut impl FnMut(T, &mut Formatter) -> std::fmt::Result,
 ) -> std::fmt::Result
-    where I: Iterator<Item=T> {
+where
+    I: Iterator<Item = T>,
+{
     if len > max {
         let limit = max / 2;
         let to_skip = len - (limit * 2);
@@ -50,49 +53,76 @@ fn fmt_separated_max<I, T>(
 
 const DEBUG_LIMIT_DIM_OUTER: usize = 5;
 const DEBUG_LIMIT_DIM_INNER: usize = 10;
-fn fmt_tensor_data<T>(t: TensorView<T>, f: &mut Formatter, depth: usize) -> std::fmt::Result where T: Debug {
+fn fmt_tensor_data<T, D: Dims>(
+    t: TensorView<T, D>,
+    f: &mut Formatter,
+    depth: usize,
+) -> std::fmt::Result
+where
+    T: Debug,
+{
     f.write_char('[')?;
     if t.len() > 0 {
-        if t.dims().len() < 2 {
-            fmt_separated_max(t.iter(), t.len(), DEBUG_LIMIT_DIM_INNER, f, ", ", &mut |el, f| Debug::fmt(el, f))?;
+        if D::N < 2 {
+            fmt_separated_max(
+                t.iter(),
+                t.len(),
+                DEBUG_LIMIT_DIM_INNER,
+                f,
+                ", ",
+                &mut |el, f| Debug::fmt(el, f),
+            )?;
         } else {
             let indent = "   ".repeat(depth);
             let sep = format!(",\n{indent}   ");
             write!(f, "\n{indent}   ")?;
-            fmt_separated_max(t.iter_first_axis(), t.dims().first(), DEBUG_LIMIT_DIM_OUTER, f, sep.as_str(), &mut |el, f| {
-                fmt_tensor_data(el, f, depth + 1)
-            })?;
+            fmt_separated_max(
+                t.iter_first_axis(),
+                t.dims().first(),
+                DEBUG_LIMIT_DIM_OUTER,
+                f,
+                sep.as_str(),
+                &mut |el, f| fmt_tensor_data(el, f, depth + 1),
+            )?;
             write!(f, "\n{indent}")?;
         }
     }
     f.write_char(']')
 }
 
-fn format_tensor<T>(t: TensorView<T>, f: &mut Formatter) -> std::fmt::Result where T: Debug {
-    let suffix = format!(" dtype={} dims={} len={}", std::any::type_name::<T>(), t.dims(), t.len());
+fn format_tensor<T, D: Dims>(t: TensorView<T, D>, f: &mut Formatter) -> std::fmt::Result
+where
+    T: Debug,
+{
+    let suffix = format!(
+        " dtype={} dims={} len={}",
+        std::any::type_name::<T>(),
+        t.dims(),
+        t.len()
+    );
     fmt_tensor_data(t, f, 0)?;
     f.write_str(suffix.as_str())
 }
 
-impl<T> Debug for Tensor<T> where T: Debug {
+impl<T: Debug, D: Dims> Debug for Tensor<T, D> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         format_tensor(self.view(), f)
     }
 }
 
-impl<'a, T> Debug for TensorView<'a, T> where T: Debug {
+impl<'a, T: Debug, D: Dims> Debug for TensorView<'a, T, D> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         format_tensor(self.view(), f)
     }
 }
 
-impl<'a, T> Debug for TensorViewMut<'a, T> where T: Debug {
+impl<'a, T: Debug, D: Dims> Debug for TensorViewMut<'a, T, D> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         format_tensor(self.view(), f)
     }
 }
 
-impl<'a, T> Debug for TensorCow<'a, T> where T: Debug {
+impl<'a, T: Debug, D: Dims> Debug for TensorCow<'a, T, D> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         format_tensor(self.view(), f)
     }
@@ -101,25 +131,40 @@ impl<'a, T> Debug for TensorCow<'a, T> where T: Debug {
 #[cfg(test)]
 mod test {
     use crate::tensor;
-    use crate::tensor::{ITensor, Tensor};
+    use crate::tensor::{Dim2, ITensor, Tensor, Tensor1, Tensor2, Tensor3};
 
     #[test]
     fn test_empty() {
-        assert_eq!("[] dtype=i32 dims=(0) len=0", format!("{:?}", tensor![] as Tensor<i32>));
-        assert_eq!("[] dtype=i32 dims=(2, 0) len=0", format!("{:?}", tensor![[],[]] as Tensor<i32>));
-        assert_eq!("[] dtype=i32 dims=(1, 2, 0) len=0", format!("{:?}", tensor![[[],[]]] as Tensor<i32>));
+        assert_eq!(
+            "[] dtype=i32 dims=(0) len=0",
+            format!("{:?}", tensor![] as Tensor1<i32>)
+        );
+        assert_eq!(
+            "[] dtype=i32 dims=(2, 0) len=0",
+            format!("{:?}", tensor![[], []] as Tensor2<i32>)
+        );
+        assert_eq!(
+            "[] dtype=i32 dims=(1, 2, 0) len=0",
+            format!("{:?}", tensor![[[], []]] as Tensor3<i32>)
+        );
     }
 
     #[test]
     fn test_small() {
-        assert_eq!("[1, 2, 3, 4, 5] dtype=i32 dims=(5) len=5", format!("{:?}", tensor![1, 2, 3, 4, 5] as Tensor<i32>));
-        assert_eq!("[\n   [1, 2],\n   [3, 4]\n] dtype=i32 dims=(2, 2) len=4", format!("{:?}", tensor![[1, 2],[3, 4]] as Tensor<i32>));
-        assert_eq!("[\n   [\n      [1, 2],\n      [3, 4],\n      [5, 6]\n   ]\n] dtype=i32 dims=(1, 3, 2) len=6", format!("{:?}", tensor![[[1, 2],[3, 4],[5, 6]]] as Tensor<i32>));
+        assert_eq!(
+            "[1, 2, 3, 4, 5] dtype=i32 dims=(5) len=5",
+            format!("{:?}", tensor![1, 2, 3, 4, 5] as Tensor1<i32>)
+        );
+        assert_eq!(
+            "[\n   [1, 2],\n   [3, 4]\n] dtype=i32 dims=(2, 2) len=4",
+            format!("{:?}", tensor![[1, 2], [3, 4]] as Tensor2<i32>)
+        );
+        assert_eq!("[\n   [\n      [1, 2],\n      [3, 4],\n      [5, 6]\n   ]\n] dtype=i32 dims=(1, 3, 2) len=6", format!("{:?}", tensor![[[1, 2],[3, 4],[5, 6]]] as Tensor3<i32>));
     }
 
     #[test]
     fn test_large() {
-        let a = Tensor::from_vec((0..200).collect(), (10, 20));
+        let a = Tensor::from_vec((0..200).collect(), Dim2(10, 20));
         let expected = r#"[
    [0, 1, 2, 3, 4, ...(10 hidden), 15, 16, 17, 18, 19],
    [20, 21, 22, 23, 24, ...(10 hidden), 35, 36, 37, 38, 39],
@@ -129,5 +174,4 @@ mod test {
 ] dtype=i32 dims=(10, 20) len=200"#;
         assert_eq!(expected, format!("{a:?}"))
     }
-
 }

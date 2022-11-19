@@ -5,6 +5,7 @@ use crate::backend::Backend;
 use crate::net::initializer::NetInitializer;
 use std::fmt::Debug;
 
+use crate::tensor::Dim2;
 pub use concrete::{ConcreteLayer, ConcreteLayerParams};
 pub use fully_connected::{FullyConnectedLayer, FullyConnectedLayerParams};
 
@@ -26,15 +27,15 @@ pub trait LayerParams<B: Backend>: Clone + Debug {
 }
 
 pub trait Layer<B: Backend>: Debug {
-    fn forward(&mut self, backend: &B, input: &B::Tensor, output: &mut B::Tensor);
+    fn forward(&mut self, backend: &B, input: &B::Tensor<Dim2>, output: &mut B::Tensor<Dim2>);
 
     fn backprop(
         &mut self,
         backend: &B,
-        input: &B::Tensor,
-        output: &B::Tensor,
-        input_error: Option<&mut B::Tensor>,
-        output_error: &B::Tensor,
+        input: &B::Tensor<Dim2>,
+        output: &B::Tensor<Dim2>,
+        input_error: Option<&mut B::Tensor<Dim2>>,
+        output_error: &B::Tensor<Dim2>,
         learn_rate: B::DType,
         momentum: B::DType,
     );

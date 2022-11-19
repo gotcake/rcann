@@ -1,6 +1,6 @@
 use mnist::{Mnist, MnistBuilder};
 use rcann::dtype::DType;
-use rcann::tensor::Tensor;
+use rcann::tensor::{Dim2, Tensor2};
 use std::cmp::Ordering;
 use std::iter::zip;
 
@@ -8,8 +8,8 @@ const IMAGE_PIXELS: usize = 28 * 28;
 const NUM_CLASSES: usize = 10;
 
 pub struct MnistData<D: DType> {
-    pub train: Vec<(Tensor<D>, Tensor<D>)>,
-    pub test: Vec<(Tensor<D>, Tensor<D>)>,
+    pub train: Vec<(Tensor2<D>, Tensor2<D>)>,
+    pub test: Vec<(Tensor2<D>, Tensor2<D>)>,
 }
 
 pub fn load_mnist_data<D: DType>(
@@ -61,7 +61,7 @@ fn get_batches<I: Copy, O, F>(
     sample_size: usize,
     batch_size: usize,
     f: F,
-) -> Vec<Tensor<O>>
+) -> Vec<Tensor2<O>>
 where
     F: Fn(I) -> O,
 {
@@ -70,7 +70,7 @@ where
         .map(|chunk| {
             let num_samples = chunk.len() / sample_size;
             let converted: Vec<O> = chunk.iter().map(|x| f(*x)).collect();
-            Tensor::from_vec(converted, (num_samples, sample_size))
+            Tensor2::from_vec(converted, Dim2(num_samples, sample_size))
         })
         .collect()
 }
