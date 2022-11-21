@@ -38,44 +38,6 @@ pub trait DTypeOps: DType {
         C: TensorBaseMut<Self, Dim2>;
 }
 
-/*
-impl DTypeOps for f32 {
-    fn matrix_multiply<A, B, C>(alpha: Self, a: &A, ta: bool, b: &B, tb: bool, beta: Self, c: &mut C, tc: bool) where A: TensorBase<Self>, B: TensorBase<Self>, C: TensorBaseMut<Self> {
-        let (a_rows, a_cols) = a.dims().unwrap_2d();
-        let (b_rows, b_cols) = b.dims().unwrap_2d();
-        let (_, c_cols) = c.dims().unwrap_2d();
-        let (m, k, rsa, csa) = if ta {
-            (a_cols, a_rows, 1, a_cols as isize)
-        } else {
-            (a_rows, a_cols, a_cols as isize, 1)
-        };
-        let (n, rsb, csb) = if tb {
-            assert_eq!(b_cols, k);
-            (b_rows, 1, b_cols as isize)
-        } else {
-            assert_eq!(b_rows, k);
-            (b_cols, b_cols as isize, 1)
-        };
-        let (rsc, csc) = if tc {
-            assert_eq!(c.dims(), &Dims::D2(n, m));
-            (1, c_cols as isize)
-        } else {
-            assert_eq!(c.dims(), &Dims::D2(m, n));
-            (c_cols as isize, 1)
-        };
-        unsafe {
-            matrixmultiply::sgemm(
-                m, k, n,
-                alpha,
-                a.as_ptr(), rsa, csa,
-                b.as_ptr(), rsb, csb,
-                beta,
-                c.as_mut_ptr(), rsc, csc
-            );
-        }
-    }
-}*/
-
 macro_rules! implement_dtype_ops {
     ($t: ident, $g: ident) => {
         impl DTypeOps for $t {
@@ -145,7 +107,7 @@ implement_dtype_ops!(f64, dgemm);
 mod test {
     use crate::backend::cpu::math::DTypeOps;
     use crate::tensor;
-    use crate::tensor::{Dim2, Tensor, Tensor2};
+    use crate::tensor::{Dim2, Tensor2};
 
     #[test]
     fn test_mat_mul() {

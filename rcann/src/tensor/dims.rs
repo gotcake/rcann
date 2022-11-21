@@ -18,6 +18,10 @@ impl Dim2 {
     pub fn cols(&self) -> usize {
         self.1
     }
+    #[inline]
+    pub fn transposed(&self) -> Dim2 {
+        Dim2(self.1, self.0)
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -27,11 +31,13 @@ pub trait Dims: Copy + Debug + Eq + Display {
     const N: usize;
     type Less: Dims;
     fn first(&self) -> usize;
+    fn last(&self) -> usize;
     fn tensor_len(&self) -> usize;
     fn as_vec(&self) -> Vec<usize>;
     fn without_first_axis(&self) -> Self::Less;
     fn with_resized_first_axis(&self, size: usize) -> Self;
     fn map_each<F>(&self, f: F) -> Self where F: FnMut(usize, usize) -> usize;
+    fn as_dim3(&self) -> Dim3;
 }
 
 impl Display for Dim0 {
@@ -45,6 +51,10 @@ impl Dims for Dim0 {
     type Less = Self;
     #[inline]
     fn first(&self) -> usize {
+        1
+    }
+    #[inline]
+    fn last(&self) -> usize {
         1
     }
     #[inline]
@@ -64,6 +74,10 @@ impl Dims for Dim0 {
     fn map_each<F>(&self, _f: F) -> Self where F: FnMut(usize, usize) -> usize {
         Dim0
     }
+    #[inline]
+    fn as_dim3(&self) -> Dim3 {
+        Dim3(1, 1, 1)
+    }
 }
 
 impl Dims for Dim1 {
@@ -71,6 +85,10 @@ impl Dims for Dim1 {
     type Less = Dim0;
     #[inline]
     fn first(&self) -> usize {
+        self.0
+    }
+    #[inline]
+    fn last(&self) -> usize {
         self.0
     }
     #[inline]
@@ -88,6 +106,10 @@ impl Dims for Dim1 {
     }
     fn map_each<F>(&self, mut f: F) -> Self where F: FnMut(usize, usize) -> usize {
         Dim1(f(self.0, 0))
+    }
+    #[inline]
+    fn as_dim3(&self) -> Dim3 {
+        Dim3(1, 1, self.0)
     }
 }
 
@@ -107,6 +129,10 @@ impl Dims for Dim2 {
         self.0
     }
     #[inline]
+    fn last(&self) -> usize {
+        self.1
+    }
+    #[inline]
     fn tensor_len(&self) -> usize {
         self.0 * self.1
     }
@@ -124,6 +150,10 @@ impl Dims for Dim2 {
 
     fn map_each<F>(&self, mut f: F) -> Self where F: FnMut(usize, usize) -> usize {
         Dim2(f(self.0, 0), f(self.1, 1))
+    }
+    #[inline]
+    fn as_dim3(&self) -> Dim3 {
+        Dim3(1, self.0, self.1)
     }
 }
 
@@ -145,6 +175,10 @@ impl Dims for Dim3 {
         self.0
     }
     #[inline]
+    fn last(&self) -> usize {
+        self.2
+    }
+    #[inline]
     fn tensor_len(&self) -> usize {
         self.0 * self.1 * self.2
     }
@@ -163,6 +197,10 @@ impl Dims for Dim3 {
 
     fn map_each<F>(&self, mut f: F) -> Self where F: FnMut(usize, usize) -> usize {
         Dim3(f(self.0, 0), f(self.1, 1), f(self.2, 2))
+    }
+    #[inline]
+    fn as_dim3(&self) -> Dim3 {
+        *self
     }
 }
 

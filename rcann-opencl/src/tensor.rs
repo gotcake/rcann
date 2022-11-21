@@ -2,33 +2,37 @@ use crate::error::Error;
 use crate::util::{next_multiple, Result};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
-use opencl3::event::{Event, CL_COMPLETE};
+use opencl3::event::{Event};
 use opencl3::memory::{Buffer, CL_MEM_READ_WRITE};
-use opencl3::types::{cl_double, cl_float, CL_BLOCKING};
-use rcann::tensor::{Dim2, Dims, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView, TensorViewMut};
+use opencl3::types::{cl_double, cl_float, CL_BLOCKING, cl_event};
+use rcann::tensor::{Dims, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
 use std::cell::RefCell;
-use std::cmp::min;
-use std::iter::zip;
-use std::ops::Deref;
+use std::ffi::c_void;
 use std::ptr;
 use std::rc::Rc;
-use crate::util::MATRIX_PADDING_SIZE;
+use crate::{util, wrap_cl_error};
+use std::mem;
+use crate::kernels;
 
 pub trait OclDType: Copy + Default {}
 impl OclDType for cl_float {}
 impl OclDType for cl_double {}
 
+pub const BLOCK_SIZE: usize = util::max_usize(kernels::gemm::constants::TILE_SIZE,kernels::transpose::constants::BLOCK_SIZE);
+
 pub struct OclTensor<T: OclDType, D: Dims> {
     buffer: Buffer<T>,
+    len: usize,
+    capacity: usize,
     dims: D,
     buffer_dims: D,
-    dependency: RefCell<Option<Rc<Event>>>,
+    deps: RefCell<Vec<Rc<Event>>>,
 }
 
 impl<T: OclDType, D: Dims> ITensor<T, D> for OclTensor<T, D> {
     #[inline]
     fn len(&self) -> usize {
-        self.dims.tensor_len()
+        self.len
     }
     #[inline]
     fn dims(&self) -> &D {
@@ -37,38 +41,59 @@ impl<T: OclDType, D: Dims> ITensor<T, D> for OclTensor<T, D> {
 }
 
 impl<T: OclDType, D: Dims> OclTensor<T, D> {
-    pub fn new(context: &Context, dims: D) -> Result<Self> {
-        let buffer_dims = dims.map_each(|size, _| next_multiple(size, MATRIX_PADDING_SIZE));
+    pub unsafe fn uninit(context: &Context, dims: D) -> Result<Self> {
+        let len = dims.tensor_len();
+        let buffer_dims = dims.map_each(|size, _| next_multiple(size, BLOCK_SIZE));
         let capacity = buffer_dims.tensor_len();
-        let buffer = unsafe {
-            Buffer::<T>::create(context, CL_MEM_READ_WRITE, capacity, ptr::null_mut())
-                .map_err(|err| Error::from_cl_err(err, "Failed to create buffer"))?
-        };
+        let buffer = wrap_cl_error!(
+            Buffer::<T>::create(context, CL_MEM_READ_WRITE, capacity, ptr::null_mut()),
+            "Failed to create buffer"
+        )?;
         Ok(OclTensor {
             buffer,
             dims,
             buffer_dims,
-            dependency: RefCell::new(None),
+            len,
+            capacity,
+            deps: RefCell::new(Vec::new()),
         })
     }
 
-    pub fn from_slice<Q>(context: &Context, queue: Q, slice: &[T], dims: D) -> Result<Self>
-    where
-        Q: Deref<Target = CommandQueue>,
-    {
-        assert_eq!(slice.len(), dims.tensor_len());
-        let mut tensor = Self::new(context, dims)?;
-        tensor.write_sync(queue, slice)?;
+    pub fn zeroed(context: &Context, queue: &CommandQueue, dims: D) -> Result<Self> {
+        let mut tensor = unsafe { Self::uninit(context, dims)? };
+        //wrap_cl_error!(queue.enqueue_barrier_with_wait_list(), "failed to finish")?;
+        tensor.fill(queue, T::default())?;
         Ok(tensor)
     }
 
-    pub fn from_native<N, Q>(context: &Context, queue: Q, native: &N) -> Result<Self>
+    pub fn fill(&mut self, queue: &CommandQueue, value: T) -> Result<()> {
+        let deps = self.get_deps();
+        let fill_event = wrap_cl_error!(
+            unsafe {
+                queue.enqueue_fill_buffer(
+                    &mut self.buffer,
+                    &[value],
+                    0,
+                    self.capacity,
+                    deps.as_slice()
+                )
+            },
+            "Failed to enqueue fill buffer"
+        )?;
+        self.set_dep(fill_event);
+        Ok(())
+    }
+
+    pub fn from_slice(context: &Context, queue: &CommandQueue, slice: &[T], dims: D) -> Result<Self> {
+        Self::from_native(context, queue, &TensorView::from_slice(slice, dims))
+    }
+
+    pub fn from_native<N>(context: &Context, queue: &CommandQueue, native: &N) -> Result<Self>
     where
-        Q: Deref<Target = CommandQueue>,
         N: TensorBase<T, D>,
     {
-        let mut tensor = Self::new(context, *native.dims())?;
-        tensor.write_sync(queue, native.as_ref())?;
+        let mut tensor = Self::zeroed(context, queue, *native.dims())?;
+        tensor.write_sync(queue, native)?;
         Ok(tensor)
     }
 
@@ -77,57 +102,85 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         &self.buffer_dims
     }
 
-    fn sync(&self) -> Result<()> {
-        if let Some(evt) = self.dependency.borrow_mut().take() {
-            evt.wait().map_err(|err| {
-                Error::from_cl_err(err, "Failed to wait for buffer dependency event")
-            })?;
-        };
+    pub fn sync(&self) -> Result<()> {
+        if self.has_deps() {
+            let deps = self.deps.replace(Vec::new());
+            util::wait_for_events(util::get_raw_events(&deps).as_slice())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn read_sync<R>(&self, queue: &CommandQueue, dst: &mut R) -> Result<()>
+        where R: TensorBaseMut<T, D>,
+    {
+        assert!(D::N <= 3, "Unsupported dimensionality");
+        assert_eq!(&self.dims, dst.dims(), "Mismatched tensor dimensions");
+        let dst = dst.as_mut();
+        if D::N <= 1 || self.dims == self.buffer_dims {
+            wrap_cl_error!(
+                unsafe { queue.enqueue_read_buffer(&self.buffer, CL_BLOCKING, 0, dst, self.get_deps().as_slice()) },
+                "Failed to enqueue read buffer"
+            )?;
+        } else {
+            let region = util::get_rect_region::<D, T>(self.dims);
+            wrap_cl_error!(
+                unsafe {
+                    // see https://registry.khronos.org/OpenCL/sdk/1.1/docs/man/xhtml/clEnqueueWriteBufferRect.html
+                    queue.enqueue_read_buffer_rect(
+                        &self.buffer,
+                        CL_BLOCKING,
+                        [0, 0, 0].as_ptr(), // buffer_origin
+                        [0, 0, 0].as_ptr(), // host_origin
+                        region.as_ptr(), // region
+                        self.buffer_dims.last() * mem::size_of::<T>(), // buffer_row_pitch
+                        0, // buffer_slice_pitch
+                        0, // host_row_pitch
+                        0, // host_slice_pitch
+                        dst.as_mut_ptr() as *mut c_void,
+                        self.get_deps().as_slice()
+                    )
+                },
+                "Failed to enqueue read buffer rect"
+            )?;
+        }
+        self.clear_deps();
         Ok(())
     }
 
-    pub fn read_sync<Q>(&self, queue: Q, dst: &mut [T]) -> Result<()>
-    where
-        Q: Deref<Target = CommandQueue>,
-    {
-        assert_eq!(self.len(), dst.len());
-        self.sync()?;
-        // TODO: reuse some buffer
-        let mut tmp: Tensor<T, D> = Tensor::filled_default(self.buffer_dims);
-        let read_event = unsafe {
-            queue
-                .enqueue_read_buffer(&self.buffer, CL_BLOCKING, 0, tmp.as_mut(), &[])
-                .map_err(|err| Error::from_cl_err(err, "Failed to enqueue buffer read"))?
-        };
-        if cfg!(debug_assertions) {
-            let status = read_event
-                .command_execution_status()
-                .map_err(|err| Error::from_cl_err(err, "Failed to get command execution status"))?;
-            assert_eq!(status.0, CL_COMPLETE);
+    pub fn write_sync<S>(&mut self, queue: &CommandQueue, src: &S) -> Result<()> where S: TensorBase<T, D> {
+        assert!(D::N <= 3, "Unsupported dimensionality");
+        assert_eq!(&self.dims, src.dims(), "Mismatched tensor dimensions");
+        let deps = self.get_deps();
+        let src = src.as_ref();
+        if D::N <= 1 || self.dims == self.buffer_dims {
+            wrap_cl_error!(
+                unsafe { queue.enqueue_write_buffer(&mut self.buffer, CL_BLOCKING, 0, src, deps.as_slice()) },
+                "Failed to enqueue write buffer"
+            )?;
+        } else {
+            let region = util::get_rect_region::<D, T>(self.dims);
+            wrap_cl_error!(
+                unsafe {
+                    // see https://man.opencl.org/clEnqueueWriteBufferRect.html
+                    queue.enqueue_write_buffer_rect(
+                        &mut self.buffer,
+                        CL_BLOCKING,
+                        [0, 0, 0].as_ptr(), // buffer_origin
+                        [0, 0, 0].as_ptr(), // host_origin
+                        region.as_ptr(), // region
+                        self.buffer_dims.last() * mem::size_of::<T>(), // buffer_row_pitch
+                        0, // buffer_slice_pitch
+                        0, // host_row_pitch
+                        0, // host_slice_pitch
+                        src.as_ptr() as *mut c_void,
+                        deps.as_slice()
+                    )
+                },
+                "Failed to enqueue write buffer rect"
+            )?;
         }
-        copy_padded(tmp.view(), TensorViewMut::from_slice(dst, self.dims));
-        Ok(())
-    }
-
-    pub fn write_sync<Q>(&mut self, queue: Q, src: &[T]) -> Result<()>
-    where
-        Q: Deref<Target = CommandQueue>,
-    {
-        assert_eq!(self.len(), src.len());
-        let mut tmp: Tensor<T, D> = Tensor::filled_default(self.buffer_dims);
-        copy_padded(TensorView::from_slice(src, self.dims), tmp.view_mut());
-        self.sync()?;
-        let write_evt = unsafe {
-            queue
-                .enqueue_write_buffer(&mut self.buffer, CL_BLOCKING, 0, tmp.as_ref(), &[])
-                .map_err(|err| Error::from_cl_err(err, "Failed to enqueue buffer read"))?
-        };
-        if cfg!(debug_assertions) {
-            let status = write_evt
-                .command_execution_status()
-                .map_err(|err| Error::from_cl_err(err, "Failed to get command execution status"))?;
-            assert_eq!(status.0, CL_COMPLETE);
-        }
+        self.clear_deps();
         Ok(())
     }
 
@@ -141,34 +194,102 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         &self.buffer
     }
 
-    pub fn get_dependency(&self) -> Option<Rc<Event>> {
-        self.dependency.borrow_mut().clone()
+    #[inline]
+    pub fn has_deps(&self) -> bool {
+        !self.deps.borrow().is_empty()
     }
 
-    pub fn put_dependency(&self, dep: Rc<Event>) {
-        self.dependency.replace(Some(dep));
+    pub fn get_deps(&self) -> Vec<cl_event> {
+        util::get_raw_events(&self.deps.borrow())
     }
 
-    pub fn as_native<Q>(&self, queue: Q) -> Result<Tensor<T, D>>
+    pub fn set_dep<E>(&self, dep: E) where E: Into<Rc<Event>> {
+        self.deps.replace(vec![dep.into()]);
+    }
+
+    pub fn set_deps<E>(&self, deps: Vec<E>) where E: Into<Rc<Event>> {
+        self.deps.replace(deps.into_iter().map(|e|e.into()).collect());
+    }
+
+    fn clear_deps(&self) {
+        self.deps.replace(Vec::new());
+    }
+
+    pub fn as_native(&self, queue: &CommandQueue) -> Result<Tensor<T, D>>
     where
-        Q: Deref<Target = CommandQueue>,
         T: Default + Clone,
     {
         let mut native = Tensor::filled_default(self.dims);
-        self.read_sync(queue, native.as_mut())?;
+        self.read_sync(queue, &mut native)?;
         Ok(native)
     }
 }
 
-fn copy_padded<T: Copy, D: Dims>(src: TensorView<T, D>, mut dst: TensorViewMut<T, D>) {
-    if D::N < 2 {
-        let copy_len = min(dst.len(), src.len());
-        unsafe {
-            ptr::copy_nonoverlapping(src.as_ref().as_ptr(), dst.as_mut().as_mut_ptr(), copy_len);
-        }
-    } else {
-        for (src_row, dst_row) in zip(src.iter_first_axis(), dst.iter_first_axis_mut()) {
-            copy_padded(src_row, dst_row);
-        }
+#[cfg(test)]
+mod test {
+    use approx::assert_abs_diff_eq;
+    use rcann::tensor;
+    use rcann::tensor::{Dim2, Tensor, Tensor1, Tensor2};
+    use crate::tensor::OclTensor;
+    use crate::util::{self, Result, TestContext};
+
+    #[test]
+    fn test_block_size_1d() -> Result<()> {
+        let TestContext { device, context, queue} = util::create_test_context()?;
+        let native: Tensor1<f32> = tensor![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.];
+        let ocl = OclTensor::from_native(&context, &queue, &native)?;
+        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+        Ok(())
     }
+
+    #[test]
+    fn test_non_block_size_1d() -> Result<()> {
+        let TestContext { device, context, queue} = util::create_test_context()?;
+        let native: Tensor1<f32> = tensor![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.];
+        let ocl = OclTensor::from_native(&context, &queue, &native)?;
+        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+        Ok(())
+    }
+
+    #[test]
+    fn test_block_size_2d() -> Result<()> {
+        let TestContext { device, context, queue} = util::create_test_context()?;
+        let m = 16;
+        let n = 16;
+        let native: Tensor2<f32> = Tensor::from_vec((0..(m*n)).into_iter().map(|n| n as f32).collect(), Dim2(m, n));
+        let ocl = OclTensor::from_native(&context, &queue, &native)?;
+        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+        Ok(())
+    }
+
+    #[test]
+    fn test_non_block_size_2d() -> Result<()> {
+        let TestContext { device, context, queue} = util::create_test_context()?;
+        let m = 14;
+        let n = 13;
+        let native: Tensor2<f32> = Tensor::from_vec((0..(m*n)).into_iter().map(|n| n as f32).collect(), Dim2(m, n));
+        let ocl = OclTensor::from_native(&context, &queue, &native)?;
+        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+        Ok(())
+    }
+
+    #[test]
+    fn test_3x2() -> Result<()> {
+        let TestContext { device, context, queue} = util::create_test_context()?;
+        let native: Tensor2<f32> = tensor![[1., 2., 3.],[4., 5., 6.]];
+        let ocl = OclTensor::from_native(&context, &queue, &native)?;
+        println!("{:?}", ocl.as_native_full_buff(&queue));
+        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+        Ok(())
+    }
+
+    #[test]
+    fn test_2x3() -> Result<()> {
+        let TestContext { device, context, queue} = util::create_test_context()?;
+        let native: Tensor2<f32> = tensor![[1., 2.], [3., 4.], [5., 6.]];
+        let ocl = OclTensor::from_native(&context, &queue, &native)?;
+        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+        Ok(())
+    }
+
 }

@@ -14,7 +14,14 @@ rand_distr = "0.4.3"
 serde = { version = "1.0.147", features = ["derive"], optional = true }
 serde_json = { version = "1.0.87", optional = true }
 
+[dev-dependencies]
+bencher = "0.1.5"
+
 [features]
 default = []
 approx = ["dep:approx"]
 serde = ["dep:serde", "dep:serde_json"]
+
+[[bench]]
+name = "cpu_matmul"
+harness = false

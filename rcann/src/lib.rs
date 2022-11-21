@@ -1,12 +1,10 @@
-//#![feature(slice_split_at_unchecked)]
-
 pub mod activation;
 pub mod backend;
 pub mod dtype;
 pub mod loss;
 pub mod net;
 pub mod tensor;
-mod util;
+pub mod util;
 
 extern crate matrixmultiply;
 extern crate num_traits;

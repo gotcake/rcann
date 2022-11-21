@@ -1,5 +1,5 @@
 use crate::tensor::{Dims, ITensor, Tensor, TensorBase, TensorCow, TensorView, TensorViewMut};
-use std::fmt::{Debug, Formatter, Write};
+use std::fmt::{Debug, Display, Formatter, Write};
 
 fn fmt_separated<I, T>(
     iter: &mut I,
@@ -51,12 +51,12 @@ where
     }
 }
 
-const DEBUG_LIMIT_DIM_OUTER: usize = 5;
-const DEBUG_LIMIT_DIM_INNER: usize = 10;
 fn fmt_tensor_data<T, D: Dims>(
     t: TensorView<T, D>,
     f: &mut Formatter,
     depth: usize,
+    max_outer: usize,
+    max_inner: usize
 ) -> std::fmt::Result
 where
     T: Debug,
@@ -67,7 +67,7 @@ where
             fmt_separated_max(
                 t.iter(),
                 t.len(),
-                DEBUG_LIMIT_DIM_INNER,
+                max_inner,
                 f,
                 ", ",
                 &mut |el, f| Debug::fmt(el, f),
@@ -79,10 +79,10 @@ where
             fmt_separated_max(
                 t.iter_first_axis(),
                 t.dims().first(),
-                DEBUG_LIMIT_DIM_OUTER,
+                max_outer,
                 f,
                 sep.as_str(),
-                &mut |el, f| fmt_tensor_data(el, f, depth + 1),
+                &mut |el, f| fmt_tensor_data(el, f, depth + 1, max_outer, max_inner),
             )?;
             write!(f, "\n{indent}")?;
         }
@@ -90,41 +90,64 @@ where
     f.write_char(']')
 }
 
-fn format_tensor<T, D: Dims>(t: TensorView<T, D>, f: &mut Formatter) -> std::fmt::Result
+fn format_tensor<T, D: Dims>(t: TensorView<T, D>, f: &mut Formatter, max_outer: usize, max_inner: usize) -> std::fmt::Result
 where
     T: Debug,
 {
-    let suffix = format!(
-        " dtype={} dims={} len={}",
-        std::any::type_name::<T>(),
-        t.dims(),
-        t.len()
-    );
-    fmt_tensor_data(t, f, 0)?;
-    f.write_str(suffix.as_str())
+    let dims = *t.dims();
+    let len = t.len();
+    fmt_tensor_data(t, f, 0, max_outer, max_inner)?;
+    write!(f, " dtype={} dims={} len={}",
+           std::any::type_name::<T>(),
+           dims,
+           len)
 }
 
 impl<T: Debug, D: Dims> Debug for Tensor<T, D> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        format_tensor(self.view(), f)
+        format_tensor(self.view(), f, usize::MAX, usize::MAX)
     }
 }
 
 impl<'a, T: Debug, D: Dims> Debug for TensorView<'a, T, D> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        format_tensor(self.view(), f)
+        format_tensor(self.view(), f, usize::MAX, usize::MAX)
     }
 }
 
 impl<'a, T: Debug, D: Dims> Debug for TensorViewMut<'a, T, D> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        format_tensor(self.view(), f)
+        format_tensor(self.view(), f, usize::MAX, usize::MAX)
     }
 }
 
 impl<'a, T: Debug, D: Dims> Debug for TensorCow<'a, T, D> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        format_tensor(self.view(), f)
+        format_tensor(self.view(), f, usize::MAX, usize::MAX)
+    }
+}
+
+impl<T: Debug, D: Dims> Display for Tensor<T, D> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        format_tensor(self.view(), f, 5, 10)
+    }
+}
+
+impl<'a, T: Debug, D: Dims> Display for TensorView<'a, T, D> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        format_tensor(self.view(), f, 5, 10)
+    }
+}
+
+impl<'a, T: Debug, D: Dims> Display for TensorViewMut<'a, T, D> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        format_tensor(self.view(), f, 5, 10)
+    }
+}
+
+impl<'a, T: Debug, D: Dims> Display for TensorCow<'a, T, D> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        format_tensor(self.view(), f, 5, 10)
     }
 }
 
@@ -135,6 +158,18 @@ mod test {
 
     #[test]
     fn test_empty() {
+        assert_eq!(
+            "[] dtype=i32 dims=(0) len=0",
+            format!("{}", tensor![] as Tensor1<i32>)
+        );
+        assert_eq!(
+            "[] dtype=i32 dims=(2, 0) len=0",
+            format!("{}", tensor![[], []] as Tensor2<i32>)
+        );
+        assert_eq!(
+            "[] dtype=i32 dims=(1, 2, 0) len=0",
+            format!("{}", tensor![[[], []]] as Tensor3<i32>)
+        );
         assert_eq!(
             "[] dtype=i32 dims=(0) len=0",
             format!("{:?}", tensor![] as Tensor1<i32>)
@@ -160,6 +195,15 @@ mod test {
             format!("{:?}", tensor![[1, 2], [3, 4]] as Tensor2<i32>)
         );
         assert_eq!("[\n   [\n      [1, 2],\n      [3, 4],\n      [5, 6]\n   ]\n] dtype=i32 dims=(1, 3, 2) len=6", format!("{:?}", tensor![[[1, 2],[3, 4],[5, 6]]] as Tensor3<i32>));
+        assert_eq!(
+            "[1, 2, 3, 4, 5] dtype=i32 dims=(5) len=5",
+            format!("{}", tensor![1, 2, 3, 4, 5] as Tensor1<i32>)
+        );
+        assert_eq!(
+            "[\n   [1, 2],\n   [3, 4]\n] dtype=i32 dims=(2, 2) len=4",
+            format!("{}", tensor![[1, 2], [3, 4]] as Tensor2<i32>)
+        );
+        assert_eq!("[\n   [\n      [1, 2],\n      [3, 4],\n      [5, 6]\n   ]\n] dtype=i32 dims=(1, 3, 2) len=6", format!("{}", tensor![[[1, 2],[3, 4],[5, 6]]] as Tensor3<i32>));
     }
 
     #[test]
@@ -172,6 +216,6 @@ mod test {
    [160, 161, 162, 163, 164, ...(10 hidden), 175, 176, 177, 178, 179],
    [180, 181, 182, 183, 184, ...(10 hidden), 195, 196, 197, 198, 199]
 ] dtype=i32 dims=(10, 20) len=200"#;
-        assert_eq!(expected, format!("{a:?}"))
+        assert_eq!(expected, format!("{a}"))
     }
 }

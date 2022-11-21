@@ -66,6 +66,7 @@ impl<'a, T: 'a, D: Dims> TensorCow<'a, T, D> {
     }
 
     #[inline]
+    #[allow(unused)]
     pub(super) unsafe fn borrowed_unchecked(data: &'a [T], dims: D) -> Self {
         debug_assert_eq!(data.len(), dims.tensor_len());
         TensorCow {
@@ -90,6 +91,7 @@ impl<T, D: Dims> TensorCow<'static, T, D> {
         }
     }
     #[inline]
+    #[allow(unused)]
     pub(super) unsafe fn owned_unchecked(data: Vec<T>, dims: D) -> Self {
         debug_assert_eq!(data.len(), dims.tensor_len());
         TensorCow {

@@ -32,6 +32,7 @@ pub trait TensorBase<T, D: Dims>: ITensor<T, D> + AsRef<[T]> {
     fn iter(&self) -> Iter<T> {
         self.as_ref().iter()
     }
+
 }
 
 pub trait TensorBaseMut<T, D>: TensorBase<T, D> + AsMut<[T]>

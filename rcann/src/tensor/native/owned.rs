@@ -204,6 +204,12 @@ impl<T, D: Dims> IntoIterator for Tensor<T, D> {
     }
 }
 
+impl<T: Clone, D: Dims> Clone for Tensor<T, D> {
+    fn clone(&self) -> Self {
+        unsafe { Tensor::from_vec_unchecked(self.data.clone(), self.dims) }
+    }
+}
+
 #[macro_export]
 macro_rules! tensor {
     ($([$([$($x:expr),* $(,)*]),+ $(,)*]),+ $(,)*) => {
