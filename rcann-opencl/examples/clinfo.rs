@@ -27,33 +27,16 @@ fn main() -> Result<()> {
             let device = Device::new(device_id);
             println!("\tCL_DEVICE_VENDOR: {}", device.vendor()?);
             let vendor_id = device.vendor_id()?;
-            println!(
-                "\tCL_DEVICE_VENDOR_ID: {:X}, {}",
-                vendor_id,
-                vendor_id_text(vendor_id)
-            );
+            println!("\tCL_DEVICE_VENDOR_ID: {:X}, {}", vendor_id, vendor_id_text(vendor_id));
             println!("\tCL_DEVICE_NAME: {}", device.name()?);
             println!("\tCL_DEVICE_VERSION: {}", device.version()?);
             let device_type = device.dev_type()?;
-            println!(
-                "\tCL_DEVICE_TYPE: {:X}, {}",
-                device_type,
-                device_type_text(device_type)
-            );
+            println!("\tCL_DEVICE_TYPE: {:X}, {}", device_type, device_type_text(device_type));
             println!("\tCL_DEVICE_PROFILE: {}", device.profile()?);
             println!("\tCL_DEVICE_EXTENSIONS: {}", device.extensions()?);
-            println!(
-                "\tCL_DEVICE_OPENCL_C_VERSION: {:?}",
-                device.opencl_c_version()?
-            );
-            println!(
-                "\tCL_DEVICE_BUILT_IN_KERNELS: {}",
-                device.built_in_kernels()?
-            );
-            println!(
-                "\tCL_DEVICE_SVM_CAPABILITIES: {:X}",
-                device.svm_mem_capability()
-            );
+            println!("\tCL_DEVICE_OPENCL_C_VERSION: {:?}", device.opencl_c_version()?);
+            println!("\tCL_DEVICE_BUILT_IN_KERNELS: {}", device.built_in_kernels()?);
+            println!("\tCL_DEVICE_SVM_CAPABILITIES: {:X}", device.svm_mem_capability());
             println!();
         }
     }

@@ -32,11 +32,7 @@ impl<B: Backend> LayerParams<B> for FullyConnectedLayerParams {
             ),
             Dim2(output_size, input_size),
         );
-        let biases = Tensor1::from_vec_1d(initializer.get_biases(
-            LayerType::FullyConnected,
-            output_size,
-            layer_idx,
-        ));
+        let biases = Tensor1::from_vec_1d(initializer.get_biases(LayerType::FullyConnected, output_size, layer_idx));
         FullyConnectedLayer {
             input_size,
             output_size,
@@ -66,12 +62,7 @@ pub struct FullyConnectedLayer<B: Backend> {
 }
 
 impl<B: Backend> FullyConnectedLayer<B> {
-    pub fn new(
-        backend: &B,
-        input_size: usize,
-        output_size: usize,
-        activation_fn: ActivationFn,
-    ) -> Self {
+    pub fn new(backend: &B, input_size: usize, output_size: usize, activation_fn: ActivationFn) -> Self {
         FullyConnectedLayer {
             input_size,
             output_size,
@@ -127,8 +118,7 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
             false,
         );
 
-        self.activation_fn
-            .compute(backend, &self.activation, output);
+        self.activation_fn.compute(backend, &self.activation, output);
     }
 
     fn backprop(
@@ -159,18 +149,13 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
             "Invalid dimensions for out_error tensor"
         );
 
-        let tt = self.training_tensors.get_or_insert_with(|| {
-            TrainingTensors::new(backend, num_rows, self.output_size, self.input_size)
-        });
+        let tt = self
+            .training_tensors
+            .get_or_insert_with(|| TrainingTensors::new(backend, num_rows, self.output_size, self.input_size));
 
         backend.resize_tensor_first_dim(&mut tt.activation_error, num_rows);
-        self.activation_fn.compute_error(
-            backend,
-            &self.activation,
-            output,
-            out_error,
-            &mut tt.activation_error,
-        );
+        self.activation_fn
+            .compute_error(backend, &self.activation, output, out_error, &mut tt.activation_error);
 
         if let Some(input_error) = input_error {
             assert_eq!(
@@ -201,26 +186,11 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
             false,
         );
 
-        backend.column_sum(
-            learn_rate,
-            &tt.activation_error,
-            momentum,
-            &mut tt.bias_error,
-        );
+        backend.column_sum(learn_rate, &tt.activation_error, momentum, &mut tt.bias_error);
 
-        backend.add_assign(
-            -B::DType::ONE,
-            &tt.weight_error,
-            B::DType::ONE,
-            &mut self.weights,
-        );
+        backend.add_assign(-B::DType::ONE, &tt.weight_error, B::DType::ONE, &mut self.weights);
 
-        backend.add_assign(
-            -B::DType::ONE,
-            &tt.bias_error,
-            B::DType::ONE,
-            &mut self.biases,
-        );
+        backend.add_assign(-B::DType::ONE, &tt.bias_error, B::DType::ONE, &mut self.biases);
     }
 
     #[inline]

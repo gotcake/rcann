@@ -1,16 +1,16 @@
 #[cfg(test)]
 mod test;
 
+use crate::error::Error;
 use crate::tensor::OclTensor;
-use crate::{format_c_defines, util, wrap_cl_error};
 use crate::util::Result;
-use opencl3::command_queue::{CommandQueue};
+use crate::{format_c_defines, util, wrap_cl_error};
+use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
-use rcann::tensor::{Dim2};
 use opencl3::types::cl_uint;
-use crate::error::Error;
+use rcann::tensor::Dim2;
 
 #[derive(Debug)]
 pub struct GemmKernel {
@@ -93,12 +93,8 @@ impl GemmKernel {
             .set_global_work_sizes(&[m, n / constants::WORK_PER_THREAD]);
         let deps = [a.get_deps(), b.get_deps(), c.get_deps()].concat();
         exec.set_event_wait_list(deps.as_slice());
-        let kernel_evt = wrap_cl_error!(
-            unsafe { exec.enqueue_nd_range(queue) },
-            "Failed to enqueue gemm kernel"
-        )?;
+        let kernel_evt = wrap_cl_error!(unsafe { exec.enqueue_nd_range(queue) }, "Failed to enqueue gemm kernel")?;
         c.set_dep(kernel_evt);
         Ok(())
     }
-
 }

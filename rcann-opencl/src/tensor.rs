@@ -1,24 +1,27 @@
 use crate::error::Error;
+use crate::kernels;
 use crate::util::{next_multiple, Result};
+use crate::{util, wrap_cl_error};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
-use opencl3::event::{Event};
+use opencl3::event::Event;
 use opencl3::memory::{Buffer, CL_MEM_READ_WRITE};
-use opencl3::types::{cl_double, cl_float, CL_BLOCKING, cl_event};
+use opencl3::types::{cl_double, cl_event, cl_float, CL_BLOCKING};
 use rcann::tensor::{Dims, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
 use std::cell::RefCell;
 use std::ffi::c_void;
+use std::mem;
 use std::ptr;
 use std::rc::Rc;
-use crate::{util, wrap_cl_error};
-use std::mem;
-use crate::kernels;
 
 pub trait OclDType: Copy + Default {}
 impl OclDType for cl_float {}
 impl OclDType for cl_double {}
 
-pub const BLOCK_SIZE: usize = util::max_usize(kernels::gemm::constants::TILE_SIZE,kernels::transpose::constants::BLOCK_SIZE);
+pub const BLOCK_SIZE: usize = util::max_usize(
+    kernels::gemm::constants::TILE_SIZE,
+    kernels::transpose::constants::BLOCK_SIZE,
+);
 
 pub struct OclTensor<T: OclDType, D: Dims> {
     buffer: Buffer<T>,
@@ -69,15 +72,7 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
     pub fn fill(&mut self, queue: &CommandQueue, value: T) -> Result<()> {
         let deps = self.get_deps();
         let fill_event = wrap_cl_error!(
-            unsafe {
-                queue.enqueue_fill_buffer(
-                    &mut self.buffer,
-                    &[value],
-                    0,
-                    self.capacity,
-                    deps.as_slice()
-                )
-            },
+            unsafe { queue.enqueue_fill_buffer(&mut self.buffer, &[value], 0, self.capacity, deps.as_slice()) },
             "Failed to enqueue fill buffer"
         )?;
         self.set_dep(fill_event);
@@ -112,7 +107,8 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
     }
 
     pub fn read_sync<R>(&self, queue: &CommandQueue, dst: &mut R) -> Result<()>
-        where R: TensorBaseMut<T, D>,
+    where
+        R: TensorBaseMut<T, D>,
     {
         assert!(D::N <= 3, "Unsupported dimensionality");
         assert_eq!(&self.dims, dst.dims(), "Mismatched tensor dimensions");
@@ -130,15 +126,15 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
                     queue.enqueue_read_buffer_rect(
                         &self.buffer,
                         CL_BLOCKING,
-                        [0, 0, 0].as_ptr(), // buffer_origin
-                        [0, 0, 0].as_ptr(), // host_origin
-                        region.as_ptr(), // region
+                        [0, 0, 0].as_ptr(),                            // buffer_origin
+                        [0, 0, 0].as_ptr(),                            // host_origin
+                        region.as_ptr(),                               // region
                         self.buffer_dims.last() * mem::size_of::<T>(), // buffer_row_pitch
-                        0, // buffer_slice_pitch
-                        0, // host_row_pitch
-                        0, // host_slice_pitch
+                        0,                                             // buffer_slice_pitch
+                        0,                                             // host_row_pitch
+                        0,                                             // host_slice_pitch
                         dst.as_mut_ptr() as *mut c_void,
-                        self.get_deps().as_slice()
+                        self.get_deps().as_slice(),
                     )
                 },
                 "Failed to enqueue read buffer rect"
@@ -148,7 +144,10 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         Ok(())
     }
 
-    pub fn write_sync<S>(&mut self, queue: &CommandQueue, src: &S) -> Result<()> where S: TensorBase<T, D> {
+    pub fn write_sync<S>(&mut self, queue: &CommandQueue, src: &S) -> Result<()>
+    where
+        S: TensorBase<T, D>,
+    {
         assert!(D::N <= 3, "Unsupported dimensionality");
         assert_eq!(&self.dims, src.dims(), "Mismatched tensor dimensions");
         let deps = self.get_deps();
@@ -166,15 +165,15 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
                     queue.enqueue_write_buffer_rect(
                         &mut self.buffer,
                         CL_BLOCKING,
-                        [0, 0, 0].as_ptr(), // buffer_origin
-                        [0, 0, 0].as_ptr(), // host_origin
-                        region.as_ptr(), // region
+                        [0, 0, 0].as_ptr(),                            // buffer_origin
+                        [0, 0, 0].as_ptr(),                            // host_origin
+                        region.as_ptr(),                               // region
                         self.buffer_dims.last() * mem::size_of::<T>(), // buffer_row_pitch
-                        0, // buffer_slice_pitch
-                        0, // host_row_pitch
-                        0, // host_slice_pitch
+                        0,                                             // buffer_slice_pitch
+                        0,                                             // host_row_pitch
+                        0,                                             // host_slice_pitch
                         src.as_ptr() as *mut c_void,
-                        deps.as_slice()
+                        deps.as_slice(),
                     )
                 },
                 "Failed to enqueue write buffer rect"
@@ -203,12 +202,18 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         util::get_raw_events(&self.deps.borrow())
     }
 
-    pub fn set_dep<E>(&self, dep: E) where E: Into<Rc<Event>> {
+    pub fn set_dep<E>(&self, dep: E)
+    where
+        E: Into<Rc<Event>>,
+    {
         self.deps.replace(vec![dep.into()]);
     }
 
-    pub fn set_deps<E>(&self, deps: Vec<E>) where E: Into<Rc<Event>> {
-        self.deps.replace(deps.into_iter().map(|e|e.into()).collect());
+    pub fn set_deps<E>(&self, deps: Vec<E>)
+    where
+        E: Into<Rc<Event>>,
+    {
+        self.deps.replace(deps.into_iter().map(|e| e.into()).collect());
     }
 
     fn clear_deps(&self) {
@@ -227,15 +232,15 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
 
 #[cfg(test)]
 mod test {
+    use crate::tensor::OclTensor;
+    use crate::util::{self, Result, TestContext};
     use approx::assert_abs_diff_eq;
     use rcann::tensor;
     use rcann::tensor::{Dim2, Tensor, Tensor1, Tensor2};
-    use crate::tensor::OclTensor;
-    use crate::util::{self, Result, TestContext};
 
     #[test]
     fn test_block_size_1d() -> Result<()> {
-        let TestContext { device, context, queue} = util::create_test_context()?;
+        let TestContext { device, context, queue } = util::create_test_context()?;
         let native: Tensor1<f32> = tensor![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.];
         let ocl = OclTensor::from_native(&context, &queue, &native)?;
         assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
@@ -244,7 +249,7 @@ mod test {
 
     #[test]
     fn test_non_block_size_1d() -> Result<()> {
-        let TestContext { device, context, queue} = util::create_test_context()?;
+        let TestContext { device, context, queue } = util::create_test_context()?;
         let native: Tensor1<f32> = tensor![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.];
         let ocl = OclTensor::from_native(&context, &queue, &native)?;
         assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
@@ -253,10 +258,10 @@ mod test {
 
     #[test]
     fn test_block_size_2d() -> Result<()> {
-        let TestContext { device, context, queue} = util::create_test_context()?;
+        let TestContext { device, context, queue } = util::create_test_context()?;
         let m = 16;
         let n = 16;
-        let native: Tensor2<f32> = Tensor::from_vec((0..(m*n)).into_iter().map(|n| n as f32).collect(), Dim2(m, n));
+        let native: Tensor2<f32> = Tensor::from_vec((0..(m * n)).into_iter().map(|n| n as f32).collect(), Dim2(m, n));
         let ocl = OclTensor::from_native(&context, &queue, &native)?;
         assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
         Ok(())
@@ -264,10 +269,10 @@ mod test {
 
     #[test]
     fn test_non_block_size_2d() -> Result<()> {
-        let TestContext { device, context, queue} = util::create_test_context()?;
+        let TestContext { device, context, queue } = util::create_test_context()?;
         let m = 14;
         let n = 13;
-        let native: Tensor2<f32> = Tensor::from_vec((0..(m*n)).into_iter().map(|n| n as f32).collect(), Dim2(m, n));
+        let native: Tensor2<f32> = Tensor::from_vec((0..(m * n)).into_iter().map(|n| n as f32).collect(), Dim2(m, n));
         let ocl = OclTensor::from_native(&context, &queue, &native)?;
         assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
         Ok(())
@@ -275,8 +280,8 @@ mod test {
 
     #[test]
     fn test_3x2() -> Result<()> {
-        let TestContext { device, context, queue} = util::create_test_context()?;
-        let native: Tensor2<f32> = tensor![[1., 2., 3.],[4., 5., 6.]];
+        let TestContext { device, context, queue } = util::create_test_context()?;
+        let native: Tensor2<f32> = tensor![[1., 2., 3.], [4., 5., 6.]];
         let ocl = OclTensor::from_native(&context, &queue, &native)?;
         println!("{:?}", ocl.as_native_full_buff(&queue));
         assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
@@ -285,11 +290,10 @@ mod test {
 
     #[test]
     fn test_2x3() -> Result<()> {
-        let TestContext { device, context, queue} = util::create_test_context()?;
+        let TestContext { device, context, queue } = util::create_test_context()?;
         let native: Tensor2<f32> = tensor![[1., 2.], [3., 4.], [5., 6.]];
         let ocl = OclTensor::from_native(&context, &queue, &native)?;
         assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
         Ok(())
     }
-
 }

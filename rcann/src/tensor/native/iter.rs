@@ -12,10 +12,7 @@ pub struct TensorIter<'a, T: 'a, D: Dims> {
 
 impl<'a, T: 'a, D: Dims> TensorIter<'a, T, D> {
     pub(super) unsafe fn new_unchecked(data: &'a [T], out_dims: D) -> Self {
-        debug_assert!(
-            (data.len() == 0 && out_dims.tensor_len() == 0)
-                || data.len() % out_dims.tensor_len() == 0
-        );
+        debug_assert!((data.len() == 0 && out_dims.tensor_len() == 0) || data.len() % out_dims.tensor_len() == 0);
         let stride = out_dims.tensor_len();
         let range = data.as_ptr_range();
         debug_assert!(range.start <= range.end);
@@ -40,10 +37,7 @@ pub struct TensorIterMut<'a, T: 'a, D: Dims> {
 
 impl<'a, T: 'a, D: Dims> TensorIterMut<'a, T, D> {
     pub(super) unsafe fn new_unchecked(data: &'a mut [T], out_dims: D) -> Self {
-        debug_assert!(
-            (data.len() == 0 && out_dims.tensor_len() == 0)
-                || data.len() % out_dims.tensor_len() == 0
-        );
+        debug_assert!((data.len() == 0 && out_dims.tensor_len() == 0) || data.len() % out_dims.tensor_len() == 0);
         let stride = out_dims.tensor_len();
         let range = data.as_mut_ptr_range();
         debug_assert!(range.start <= range.end);

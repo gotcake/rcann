@@ -1,5 +1,3 @@
-use std::mem;
-use std::rc::Rc;
 use crate::error::Error;
 use opencl3::command_queue::{CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE};
 use opencl3::context::Context;
@@ -7,8 +5,10 @@ use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
 use opencl3::event::Event;
 use opencl3::kernel::Kernel;
 use opencl3::program::Program;
-use opencl3::types::{cl_event};
+use opencl3::types::cl_event;
 use rcann::tensor::{Dim3, Dims};
+use std::mem;
+use std::rc::Rc;
 
 pub const fn next_multiple(n: usize, of: usize) -> usize {
     let rem = n % of;
@@ -48,8 +48,7 @@ pub fn get_context(device: &Device) -> Result<Context> {
 }
 
 pub fn create_program(context: &Context, source: &str, options: &str) -> Result<Program> {
-    Program::create_and_build_from_source(context, source, options)
-        .map_err(|err| Error::CreateProgramError(err))
+    Program::create_and_build_from_source(context, source, options).map_err(|err| Error::CreateProgramError(err))
 }
 
 pub fn create_kernel(program: &Program, name: &str) -> Result<Kernel> {
@@ -58,11 +57,7 @@ pub fn create_kernel(program: &Program, name: &str) -> Result<Kernel> {
 
 pub fn create_queue(context: &Context) -> Result<CommandQueue> {
     wrap_cl_error!(
-        CommandQueue::create_default_with_properties(
-            context,
-            CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE,
-            0,
-        ),
+        CommandQueue::create_default_with_properties(context, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, 0,),
         "Failed to create queue"
     )
 }
@@ -80,12 +75,12 @@ pub fn create_test_context() -> Result<TestContext> {
     let device = get_default_device()?;
     let context = get_context(&device)?;
     let queue = create_queue(&context)?;
-    Ok(TestContext{ device, context, queue })
+    Ok(TestContext { device, context, queue })
 }
 
 pub fn get_rect_region<D: Dims, T: Sized>(dims: D) -> [usize; 3] {
     let Dim3(z, y, x) = dims.as_dim3();
-    return [x * mem::size_of::<T>(), y, z]
+    return [x * mem::size_of::<T>(), y, z];
 }
 
 #[inline]
@@ -99,7 +94,10 @@ pub fn wait_for_events(events: &[cl_event]) -> Result<()> {
 }
 
 #[inline]
-pub fn panic_on_error<F, T>(mut f: F) -> T where F: FnMut() -> Result<T> {
+pub fn panic_on_error<F, T>(mut f: F) -> T
+where
+    F: FnMut() -> Result<T>,
+{
     f().unwrap()
 }
 
@@ -117,6 +115,9 @@ mod test {
     fn test_format_defines() {
         assert_eq!("#define FOO 1\n", format_c_defines!("FOO"=>1));
         assert_eq!("#define FOO 1\n#define BAR 2\n", format_c_defines!("FOO"=>1, "BAR"=>2));
-        assert_eq!("#define FOO 4\n#define BAR bar\n", format_c_defines!("FOO"=>1+3, "BAR"=>"bar"));
+        assert_eq!(
+            "#define FOO 4\n#define BAR bar\n",
+            format_c_defines!("FOO"=>1+3, "BAR"=>"bar")
+        );
     }
 }

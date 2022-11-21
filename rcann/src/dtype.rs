@@ -3,17 +3,7 @@ use std::fmt::LowerExp;
 use std::ops::Neg;
 
 pub trait DType:
-    'static
-    + Float
-    + FloatConst
-    + NumOps
-    + NumAssignOps
-    + One
-    + Zero
-    + Neg
-    + NumCast
-    + LowerExp
-    + Default
+    'static + Float + FloatConst + NumOps + NumAssignOps + One + Zero + Neg + NumCast + LowerExp + Default
 {
     const ZERO: Self;
     const ONE: Self;

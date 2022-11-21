@@ -59,10 +59,7 @@ impl<T> Tensor1<T> {
     }
     pub fn from_vec_1d(data: Vec<T>) -> Self {
         let len = data.len();
-        Tensor {
-            data,
-            dims: Dim1(len),
-        }
+        Tensor { data, dims: Dim1(len) }
     }
 }
 

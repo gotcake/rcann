@@ -23,16 +23,8 @@ pub fn compute_jacobian_matrix<T: DType>(a: &[T], b: &mut Tensor2<T>) {
 }
 
 pub trait DTypeOps: DType {
-    fn matrix_multiply<A, B, C>(
-        alpha: Self,
-        a: &A,
-        ta: bool,
-        b: &B,
-        tb: bool,
-        beta: Self,
-        c: &mut C,
-        tc: bool,
-    ) where
+    fn matrix_multiply<A, B, C>(alpha: Self, a: &A, ta: bool, b: &B, tb: bool, beta: Self, c: &mut C, tc: bool)
+    where
         A: TensorBase<Self, Dim2>,
         B: TensorBase<Self, Dim2>,
         C: TensorBaseMut<Self, Dim2>;
@@ -41,16 +33,8 @@ pub trait DTypeOps: DType {
 macro_rules! implement_dtype_ops {
     ($t: ident, $g: ident) => {
         impl DTypeOps for $t {
-            fn matrix_multiply<A, B, C>(
-                alpha: Self,
-                a: &A,
-                ta: bool,
-                b: &B,
-                tb: bool,
-                beta: Self,
-                c: &mut C,
-                tc: bool,
-            ) where
+            fn matrix_multiply<A, B, C>(alpha: Self, a: &A, ta: bool, b: &B, tb: bool, beta: Self, c: &mut C, tc: bool)
+            where
                 A: TensorBase<Self, Dim2>,
                 B: TensorBase<Self, Dim2>,
                 C: TensorBaseMut<Self, Dim2>,
@@ -144,10 +128,7 @@ mod test {
 
         r3x3.fill(100.); // existing values should be ignored
         f32::matrix_multiply(1.0, &b, false, &a, false, 0.0, &mut r3x3, false);
-        assert_eq!(
-            r3x3,
-            tensor![[39., 54., 69.], [49., 68., 87.], [59., 82., 105.]]
-        );
+        assert_eq!(r3x3, tensor![[39., 54., 69.], [49., 68., 87.], [59., 82., 105.]]);
 
         // C X Bt
 

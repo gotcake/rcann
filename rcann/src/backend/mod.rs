@@ -31,10 +31,7 @@ pub trait TensorOps: TensorTyped {
     where
         D: Dims,
     {
-        self.resize_tensor(
-            tensor,
-            tensor.dims().with_resized_first_axis(first_dim_size),
-        );
+        self.resize_tensor(tensor, tensor.dims().with_resized_first_axis(first_dim_size));
     }
 
     fn new_tensor_from_native<T, D>(&self, native: T) -> Self::Tensor<D>
@@ -64,21 +61,10 @@ pub trait MatrixMultiplication: TensorTyped {
 }
 
 pub trait BackendOther: TensorTyped {
-    fn column_sum(
-        &self,
-        alpha: Self::DType,
-        a: &Self::Tensor<Dim2>,
-        beta: Self::DType,
-        b: &mut Self::Tensor<Dim1>,
-    );
+    fn column_sum(&self, alpha: Self::DType, a: &Self::Tensor<Dim2>, beta: Self::DType, b: &mut Self::Tensor<Dim1>);
 
-    fn add_assign<D>(
-        &self,
-        alpha: Self::DType,
-        a: &Self::Tensor<D>,
-        beta: Self::DType,
-        b: &mut Self::Tensor<D>,
-    ) where
+    fn add_assign<D>(&self, alpha: Self::DType, a: &Self::Tensor<D>, beta: Self::DType, b: &mut Self::Tensor<D>)
+    where
         D: Dims;
 
     /// computes the sigmoid function for all elements in a given tensor
@@ -91,12 +77,7 @@ pub trait BackendOther: TensorTyped {
     );
 
     /// computes the leaky ReLU function for all elements in a given tensor
-    fn relu(
-        &self,
-        leak: Self::DType,
-        activation: &Self::Tensor<Dim2>,
-        output: &mut Self::Tensor<Dim2>,
-    );
+    fn relu(&self, leak: Self::DType, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>);
     fn relu_error(
         &self,
         leak: Self::DType,
@@ -122,7 +103,4 @@ pub trait BackendOther: TensorTyped {
     );
 }
 
-pub trait Backend:
-    'static + Debug + TensorTyped + TensorOps + MatrixMultiplication + BackendOther
-{
-}
+pub trait Backend: 'static + Debug + TensorTyped + TensorOps + MatrixMultiplication + BackendOther {}

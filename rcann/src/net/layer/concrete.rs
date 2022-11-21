@@ -23,9 +23,9 @@ impl<B: Backend> LayerParams<B> for ConcreteLayerParams {
         initializer: &mut dyn NetInitializer<B::DType>,
     ) -> Self::Layer {
         match self {
-            ConcreteLayerParams::FullyConnected(params) => ConcreteLayer::FullyConnected(
-                params.create_layer(backend, layer_idx, input_size, initializer),
-            ),
+            ConcreteLayerParams::FullyConnected(params) => {
+                ConcreteLayer::FullyConnected(params.create_layer(backend, layer_idx, input_size, initializer))
+            }
         }
     }
 }
@@ -62,15 +62,8 @@ impl<B: Backend> Layer<B> for ConcreteLayer<B> {
         learn_rate: B::DType,
         momentum: B::DType,
     ) {
-        self.inner_mut().backprop(
-            backend,
-            input,
-            output,
-            input_error,
-            output_error,
-            learn_rate,
-            momentum,
-        )
+        self.inner_mut()
+            .backprop(backend, input, output, input_error, output_error, learn_rate, momentum)
     }
 
     #[inline]

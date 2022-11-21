@@ -120,12 +120,7 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
         }
     }
 
-    fn sigmoid_error(
-        &self,
-        output: &Tensor2<DT>,
-        out_error: &Tensor2<DT>,
-        result: &mut Tensor2<DT>,
-    ) {
+    fn sigmoid_error(&self, output: &Tensor2<DT>, out_error: &Tensor2<DT>, result: &mut Tensor2<DT>) {
         assert_eq!(output.dims(), result.dims());
         assert_eq!(output.dims(), out_error.dims());
         for ((r, &out), &err) in zip(zip(result, output), out_error) {
@@ -140,13 +135,7 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
         }
     }
 
-    fn relu_error(
-        &self,
-        leak: DT,
-        activation: &Tensor2<DT>,
-        out_error: &Tensor2<DT>,
-        result: &mut Tensor2<DT>,
-    ) {
+    fn relu_error(&self, leak: DT, activation: &Tensor2<DT>, out_error: &Tensor2<DT>, result: &mut Tensor2<DT>) {
         assert_eq!(activation.dims(), result.dims());
         assert_eq!(activation.dims(), out_error.dims());
         for ((r, &act), &err) in zip(zip(result, activation), out_error) {
@@ -156,19 +145,11 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
 
     fn softmax(&self, activation: &Tensor2<DT>, output: &mut Tensor2<DT>) {
         assert_eq!(activation.dims(), output.dims());
-        for (mut output_row, activation_row) in
-            zip(output.iter_first_axis_mut(), activation.iter_first_axis())
-        {
+        for (mut output_row, activation_row) in zip(output.iter_first_axis_mut(), activation.iter_first_axis()) {
             // shift the values by -max(inputs) to prevent overflow (does not affect derivative)
             let max = *activation_row
                 .iter()
-                .max_by(|&a, &b| {
-                    if a > b {
-                        Ordering::Greater
-                    } else {
-                        Ordering::Less
-                    }
-                })
+                .max_by(|&a, &b| if a > b { Ordering::Greater } else { Ordering::Less })
                 .unwrap();
             let mut sum = DT::ZERO;
             for (t, &a) in zip(output_row.iter_mut(), activation_row) {
@@ -182,12 +163,7 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
         }
     }
 
-    fn softmax_error(
-        &self,
-        output: &Tensor2<DT>,
-        out_error: &Tensor2<DT>,
-        result: &mut Tensor2<DT>,
-    ) {
+    fn softmax_error(&self, output: &Tensor2<DT>, out_error: &Tensor2<DT>, result: &mut Tensor2<DT>) {
         let size = output.dims().cols();
         assert_eq!(output.dims(), result.dims());
         let mut temp = self.temp_matrix.borrow_mut();

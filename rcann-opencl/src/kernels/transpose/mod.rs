@@ -1,16 +1,16 @@
 #[cfg(test)]
 mod test;
 
+use crate::error::Error;
+use crate::tensor::OclTensor;
+use crate::util::{next_multiple, Result};
+use crate::{format_c_defines, util, wrap_cl_error};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
-use opencl3::types::{cl_uint};
+use opencl3::types::cl_uint;
 use rcann::tensor::{Dim2, ITensor};
-use crate::{format_c_defines, util, wrap_cl_error};
-use crate::error::Error;
-use crate::tensor::OclTensor;
-use crate::util::{next_multiple, Result};
 
 #[derive(Debug)]
 pub struct TransposeKernel {
@@ -33,7 +33,12 @@ impl TransposeKernel {
         let kernel = util::create_kernel(&program, "transpose")?;
         Ok(TransposeKernel { program, kernel })
     }
-    pub fn transpose(&self, queue: &CommandQueue, input: &OclTensor<f32, Dim2>, output: &mut OclTensor<f32, Dim2>) -> Result<()> {
+    pub fn transpose(
+        &self,
+        queue: &CommandQueue,
+        input: &OclTensor<f32, Dim2>,
+        output: &mut OclTensor<f32, Dim2>,
+    ) -> Result<()> {
         let &Dim2(in_rows, in_cols) = input.dims();
         let &Dim2(out_rows, out_cols) = output.dims();
         let in_row_stride = input.buffer_dims().cols();
@@ -60,6 +65,5 @@ impl TransposeKernel {
         )?;
         output.set_dep(kernel_evt);
         Ok(())
-
     }
 }

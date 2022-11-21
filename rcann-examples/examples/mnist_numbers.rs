@@ -8,7 +8,7 @@ use rcann::loss::LossFn;
 use rcann::net::initializer::RandomNetInitializer;
 use rcann::net::layer::FullyConnectedLayerParams;
 use rcann::net::{NetBuilder, TrainBatchResult};
-use rcann::tensor::{ITensor, Tensor2, TensorBase, Dims};
+use rcann::tensor::{Dims, ITensor, Tensor2, TensorBase};
 use std::iter::zip;
 
 use rcann_examples::util::{load_mnist_data, max_index, MnistData};
@@ -48,8 +48,7 @@ pub fn main() {
         let mut total: usize = 0;
 
         for (image_data, labels) in train.iter() {
-            let TrainBatchResult { error, output } =
-                net.train_batch(image_data, labels, &LossFn::MSE, 0.1, 0.1);
+            let TrainBatchResult { error, output } = net.train_batch(image_data, labels, &LossFn::MSE, 0.1, 0.1);
             total += error.len();
             mse += error.iter().sum::<f32>();
             rmse += error.iter().map(|&x| x.sqrt()).sum::<f32>();
@@ -75,10 +74,7 @@ pub fn main() {
         total += output.dims().first();
     }
 
-    println!(
-        "test error rate: {}",
-        (errors as f32 / total as f32) * 100.0
-    );
+    println!("test error rate: {}", (errors as f32 / total as f32) * 100.0);
 }
 
 fn count_batch_errors<T: DType>(labels: &Tensor2<T>, output: &Tensor2<T>) -> usize {

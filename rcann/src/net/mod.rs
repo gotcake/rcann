@@ -26,12 +26,7 @@ pub struct Net<B: Backend> {
 }
 
 impl<B: Backend> Net<B> {
-    fn new(
-        backend: B,
-        first: ConcreteLayer<B>,
-        hidden: Box<[ConcreteLayer<B>]>,
-        last: ConcreteLayer<B>,
-    ) -> Self {
+    fn new(backend: B, first: ConcreteLayer<B>, hidden: Box<[ConcreteLayer<B>]>, last: ConcreteLayer<B>) -> Self {
         let first_output = backend.new_tensor(Dim2(0, first.output_size()));
         let hidden_outputs = hidden
             .iter()
@@ -104,10 +99,8 @@ impl<B: Backend> Net<B> {
     }
 
     fn forward(&mut self, num_rows: usize, input: &B::Tensor<Dim2>) {
-        self.backend
-            .resize_tensor_first_dim(&mut self.first_output, num_rows);
-        self.first
-            .forward(&self.backend, input, &mut self.first_output);
+        self.backend.resize_tensor_first_dim(&mut self.first_output, num_rows);
+        self.first.forward(&self.backend, input, &mut self.first_output);
 
         let mut input = &self.first_output;
         for (layer, output) in zip(self.hidden.iter_mut(), self.hidden_outputs.iter_mut()) {
@@ -116,10 +109,8 @@ impl<B: Backend> Net<B> {
             input = output;
         }
 
-        self.backend
-            .resize_tensor_first_dim(&mut self.last_output, num_rows);
-        self.last
-            .forward(&self.backend, input, &mut self.last_output);
+        self.backend.resize_tensor_first_dim(&mut self.last_output, num_rows);
+        self.last.forward(&self.backend, input, &mut self.last_output);
     }
 
     fn backprop(
@@ -131,8 +122,7 @@ impl<B: Backend> Net<B> {
         learn_rate: B::DType,
         momentum: B::DType,
     ) {
-        self.backend
-            .resize_tensor(&mut self.output_error_buff, Dim1(num_rows));
+        self.backend.resize_tensor(&mut self.output_error_buff, Dim1(num_rows));
         self.backend
             .resize_tensor_first_dim(&mut self.output_error_deriv_buff, num_rows);
         loss.compute(
@@ -163,10 +153,7 @@ impl<B: Backend> Net<B> {
         let mut output_error = &self.last_input_error;
         for (i, (layer, (output, input_error))) in zip(
             self.hidden.iter_mut(),
-            zip(
-                self.hidden_outputs.iter(),
-                self.hidden_input_error.iter_mut(),
-            ),
+            zip(self.hidden_outputs.iter(), self.hidden_input_error.iter_mut()),
         )
         .enumerate()
         .rev()
@@ -249,38 +236,18 @@ impl<B: Backend> NetBuilder<B> {
         } else {
             let first_params = self.layers.remove(0);
             let last_params = self.layers.pop().unwrap();
-            let first = first_params.create_layer(
-                &self.backend,
-                0,
-                self.input_size,
-                self.initializer.as_mut(),
-            );
+            let first = first_params.create_layer(&self.backend, 0, self.input_size, self.initializer.as_mut());
             let mut hidden = Vec::with_capacity(self.layers.len());
             let mut last_size = first.output_size();
             let mut layer_idx: usize = 1;
             for layer_param in self.layers.iter() {
-                let layer = layer_param.create_layer(
-                    &self.backend,
-                    layer_idx,
-                    last_size,
-                    self.initializer.as_mut(),
-                );
+                let layer = layer_param.create_layer(&self.backend, layer_idx, last_size, self.initializer.as_mut());
                 last_size = layer.output_size();
                 layer_idx += 1;
                 hidden.push(layer);
             }
-            let last = last_params.create_layer(
-                &self.backend,
-                layer_idx,
-                last_size,
-                self.initializer.as_mut(),
-            );
-            Some(Net::new(
-                self.backend,
-                first,
-                hidden.into_boxed_slice(),
-                last,
-            ))
+            let last = last_params.create_layer(&self.backend, layer_idx, last_size, self.initializer.as_mut());
+            Some(Net::new(self.backend, first, hidden.into_boxed_slice(), last))
         }
     }
 }

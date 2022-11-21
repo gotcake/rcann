@@ -1,16 +1,16 @@
+use crate::kernels::gemm::GemmKernel;
+use crate::kernels::transpose::TransposeKernel;
+use crate::kernels::zero_padding::ZeroPaddingKernel;
 use crate::tensor::OclTensor;
 use crate::util::{self, panic_on_error, Result};
-use opencl3::command_queue::{CommandQueue};
+use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::device::Device;
 use opencl3::types::cl_float;
 use rcann::backend::{MatrixMultiplication, TensorOps, TensorTyped};
+use rcann::dtype::DType;
 use rcann::tensor::{Dim2, Dims, ITensor, TensorBase, TensorBaseMut};
 use std::fmt::Debug;
-use rcann::dtype::DType;
-use crate::kernels::gemm::GemmKernel;
-use crate::kernels::transpose::TransposeKernel;
-use crate::kernels::zero_padding::ZeroPaddingKernel;
 
 #[derive(Debug)]
 #[allow(unused)]
@@ -65,7 +65,7 @@ impl TensorTyped for OpenCLBackend {
 impl TensorOps for OpenCLBackend {
     #[inline]
     fn new_tensor<D: Dims>(&self, dim: D) -> Self::Tensor<D> {
-        OclTensor::zeroed(&self.context, &self.queue,dim).unwrap()
+        OclTensor::zeroed(&self.context, &self.queue, dim).unwrap()
     }
 
     fn resize_tensor<D: Dims>(&self, tensor: &mut Self::Tensor<D>, dims: D) {
@@ -101,33 +101,39 @@ impl MatrixMultiplication for OpenCLBackend {
         tb: bool,
         beta: Self::DType,
         c: &mut Self::Tensor<Dim2>,
-        tc: bool
+        tc: bool,
     ) {
         panic_on_error(|| {
             let a_transpose = if ta {
                 let mut temp = unsafe { OclTensor::uninit(&self.context, a.dims().transposed())? };
                 self.transpose_kernel.transpose(&self.queue, a, &mut temp)?;
                 Some(temp)
-            } else { None };
+            } else {
+                None
+            };
             let b_transpose = if tb {
                 let mut temp = unsafe { OclTensor::uninit(&self.context, b.dims().transposed())? };
                 self.transpose_kernel.transpose(&self.queue, b, &mut temp)?;
                 Some(temp)
-            } else { None };
+            } else {
+                None
+            };
             let mut c_transpose = if tc {
                 let mut temp = unsafe { OclTensor::uninit(&self.context, c.dims().transposed())? };
                 if beta != Self::DType::ZERO {
                     self.transpose_kernel.transpose(&self.queue, c, &mut temp)?;
                 }
                 Some(temp)
-            } else { None };
+            } else {
+                None
+            };
             self.gemm_kernel.gemm(
                 &self.queue,
                 alpha,
                 a_transpose.as_ref().unwrap_or(a),
                 b_transpose.as_ref().unwrap_or(b),
                 beta,
-                c_transpose.as_mut().unwrap_or(c)
+                c_transpose.as_mut().unwrap_or(c),
             )?;
             if let Some(c_transpose) = c_transpose {
                 self.transpose_kernel.transpose(&self.queue, &c_transpose, c)?;
@@ -137,17 +143,16 @@ impl MatrixMultiplication for OpenCLBackend {
     }
 }
 
-
 #[cfg(test)]
 mod test {
+    use crate::backend::OpenCLBackend;
+    use crate::util::Result;
     use approx::assert_abs_diff_eq;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use rand_distr::StandardNormal;
     use rcann::backend::{CpuBackend, MatrixMultiplication, TensorOps};
     use rcann::tensor::{Dim2, Tensor2};
-    use crate::backend::OpenCLBackend;
-    use crate::util::Result;
 
     macro_rules! impl_test_matrix_multiply {
         ($name:ident, $ty:ty, $m:literal, $k:literal, $n:literal, $alpha:literal, $beta:literal, $ta:literal, $tb:literal, $tc:literal, $seed:literal) => {
@@ -174,7 +179,7 @@ mod test {
                     $tb,
                     $beta as $ty,
                     &mut c_expected,
-                    $tc
+                    $tc,
                 );
 
                 let ocl_a = ocl.new_tensor_from_native(a);
@@ -189,7 +194,7 @@ mod test {
                     $tb,
                     $beta as $ty,
                     &mut ocl_c,
-                    $tc
+                    $tc,
                 );
 
                 let c_actual = ocl_c.as_native(ocl.queue())?;
@@ -214,7 +219,19 @@ mod test {
     impl_test_matrix_multiply!(test_1block, f32, 16, 16, 16, 1, 0, false, false, false, 0x1234567);
     impl_test_matrix_multiply!(test_1block_t_a, f32, 16, 16, 16, 1, 0, true, false, false, 0x1234567);
     impl_test_matrix_multiply!(test_1block_t_b, f32, 16, 16, 16, 1, 0, false, true, false, 0x1234567);
-    impl_test_matrix_multiply!(test_1block_t_c_beta, f32, 16, 16, 16, 1, 1, false, false, true, 0x1234567);
+    impl_test_matrix_multiply!(
+        test_1block_t_c_beta,
+        f32,
+        16,
+        16,
+        16,
+        1,
+        1,
+        false,
+        false,
+        true,
+        0x1234567
+    );
     impl_test_matrix_multiply!(test_1block_t_ab, f32, 16, 16, 16, 1, 0, true, true, false, 0x1234567);
     impl_test_matrix_multiply!(test_1block_t_abc, f32, 16, 16, 16, 1, 0, true, true, true, 0x1234567);
 
@@ -222,7 +239,17 @@ mod test {
     impl_test_matrix_multiply!(test_med_t, f32, 123, 75, 203, 0.75, 0.25, true, true, true, 0x1234567);
 
     impl_test_matrix_multiply!(test_large, f32, 1024, 512, 1024, 0.75, 0.25, false, false, false, 0x1234567);
-    impl_test_matrix_multiply!(test_large_t, f32, 1024, 512, 1024, 0.75, 0.25, true, true, true, 0x1234567);
-
-
+    impl_test_matrix_multiply!(
+        test_large_t,
+        f32,
+        1024,
+        512,
+        1024,
+        0.75,
+        0.25,
+        true,
+        true,
+        true,
+        0x1234567
+    );
 }

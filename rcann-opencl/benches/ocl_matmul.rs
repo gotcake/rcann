@@ -18,36 +18,116 @@ macro_rules! impl_bench {
             ocl_b.sync().unwrap();
             ocl_c.sync().unwrap();
             bench.iter(|| {
-                backend.matmul(
-                    $alpha,
-                    &ocl_a,
-                    $ta,
-                    &ocl_b,
-                    $tb,
-                    0.0,
-                    &mut ocl_c,
-                    $tc
-                );
+                backend.matmul($alpha, &ocl_a, $ta, &ocl_b, $tb, 0.0, &mut ocl_c, $tc);
                 ocl_c.sync().unwrap();
             })
         }
     };
 }
 
-impl_bench!(ocl_f32_lg, f32, get_square_matmul_tensors, MATRIX_SIZE_LG, 1.0, false, false, 0.0, false);
-impl_bench!(ocl_f32_md, f32, get_square_matmul_tensors, MATRIX_SIZE_MD, 1.0, false, false, 0.0, false);
-impl_bench!(ocl_f32_sm, f32, get_square_matmul_tensors, MATRIX_SIZE_SM, 1.0, false, false, 0.0, false);
-
-impl_bench!(ocl_f32_lg_transpose_a, f32, get_square_matmul_tensors, MATRIX_SIZE_LG, 1.0, true, false, 0.0, false);
-impl_bench!(ocl_f32_md_transpose_a, f32, get_square_matmul_tensors, MATRIX_SIZE_MD, 1.0, true, false, 0.0, false);
-impl_bench!(ocl_f32_sm_transpose_a, f32, get_square_matmul_tensors, MATRIX_SIZE_SM, 1.0, true, false, 0.0, false);
-
-impl_bench!(ocl_f32_lg_transpose_b, f32, get_square_matmul_tensors, MATRIX_SIZE_LG, 1.0, false, true, 0.0, false);
-impl_bench!(ocl_f32_md_transpose_b, f32, get_square_matmul_tensors, MATRIX_SIZE_MD, 1.0, false, true, 0.0, false);
-impl_bench!(ocl_f32_sm_transpose_b, f32, get_square_matmul_tensors, MATRIX_SIZE_SM, 1.0, false, true, 0.0, false);
-
+impl_bench!(
+    ocl_f32_lg,
+    f32,
+    get_square_matrices,
+    SIZE_LG,
+    1.0,
+    false,
+    false,
+    0.0,
+    false
+);
+impl_bench!(
+    ocl_f32_md,
+    f32,
+    get_square_matrices,
+    SIZE_MD,
+    1.0,
+    false,
+    false,
+    0.0,
+    false
+);
+impl_bench!(
+    ocl_f32_sm,
+    f32,
+    get_square_matrices,
+    SIZE_SM,
+    1.0,
+    false,
+    false,
+    0.0,
+    false
+);
 benchmark_group!(ocl_f32, ocl_f32_lg, ocl_f32_md, ocl_f32_sm);
-benchmark_group!(ocl_f32_transpose_a, ocl_f32_lg_transpose_a, ocl_f32_md_transpose_a, ocl_f32_sm_transpose_a);
-benchmark_group!(ocl_f32_transpose_b, ocl_f32_lg_transpose_b, ocl_f32_md_transpose_b, ocl_f32_sm_transpose_b);
 
-benchmark_main!(ocl_f32, ocl_f32_transpose_a, ocl_f32_transpose_b);
+impl_bench!(
+    ocl_f32_lg_t_a,
+    f32,
+    get_square_matrices,
+    SIZE_LG,
+    1.0,
+    true,
+    false,
+    0.0,
+    false
+);
+impl_bench!(
+    ocl_f32_md_t_a,
+    f32,
+    get_square_matrices,
+    SIZE_MD,
+    1.0,
+    true,
+    false,
+    0.0,
+    false
+);
+impl_bench!(
+    ocl_f32_sm_t_a,
+    f32,
+    get_square_matrices,
+    SIZE_SM,
+    1.0,
+    true,
+    false,
+    0.0,
+    false
+);
+benchmark_group!(ocl_f32_t_a, ocl_f32_lg_t_a, ocl_f32_md_t_a, ocl_f32_sm_t_a);
+
+impl_bench!(
+    ocl_f32_lg_t_b,
+    f32,
+    get_square_matrices,
+    SIZE_LG,
+    1.0,
+    false,
+    true,
+    0.0,
+    false
+);
+impl_bench!(
+    ocl_f32_md_t_b,
+    f32,
+    get_square_matrices,
+    SIZE_MD,
+    1.0,
+    false,
+    true,
+    0.0,
+    false
+);
+impl_bench!(
+    ocl_f32_sm_t_b,
+    f32,
+    get_square_matrices,
+    SIZE_SM,
+    1.0,
+    false,
+    true,
+    0.0,
+    false
+);
+benchmark_group!(ocl_f32_t_b, ocl_f32_lg_t_b, ocl_f32_md_t_b, ocl_f32_sm_t_b);
+
+benchmark_main!(ocl_f32, ocl_f32_t_a, ocl_f32_t_b);

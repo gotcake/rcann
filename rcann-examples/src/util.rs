@@ -12,11 +12,7 @@ pub struct MnistData<D: DType> {
     pub test: Vec<(Tensor2<D>, Tensor2<D>)>,
 }
 
-pub fn load_mnist_data<D: DType>(
-    train_samples: usize,
-    test_samples: usize,
-    batch_size: usize,
-) -> MnistData<D> {
+pub fn load_mnist_data<D: DType>(train_samples: usize, test_samples: usize, batch_size: usize) -> MnistData<D> {
     let Mnist {
         trn_img,
         trn_lbl,
@@ -37,32 +33,19 @@ pub fn load_mnist_data<D: DType>(
 
     MnistData {
         train: zip(
-            get_batches(trn_img, IMAGE_PIXELS, batch_size, |p| {
-                D::from_f64(p as f64 / 256.0)
-            }),
-            get_batches(trn_lbl, NUM_CLASSES, batch_size, |l| {
-                D::from_usize(l as usize)
-            }),
+            get_batches(trn_img, IMAGE_PIXELS, batch_size, |p| D::from_f64(p as f64 / 256.0)),
+            get_batches(trn_lbl, NUM_CLASSES, batch_size, |l| D::from_usize(l as usize)),
         )
         .collect(),
         test: zip(
-            get_batches(tst_img, IMAGE_PIXELS, batch_size, |p| {
-                D::from_f64(p as f64 / 256.0)
-            }),
-            get_batches(tst_lbl, NUM_CLASSES, batch_size, |l| {
-                D::from_usize(l as usize)
-            }),
+            get_batches(tst_img, IMAGE_PIXELS, batch_size, |p| D::from_f64(p as f64 / 256.0)),
+            get_batches(tst_lbl, NUM_CLASSES, batch_size, |l| D::from_usize(l as usize)),
         )
         .collect(),
     }
 }
 
-fn get_batches<I: Copy, O, F>(
-    raw: Vec<I>,
-    sample_size: usize,
-    batch_size: usize,
-    f: F,
-) -> Vec<Tensor2<O>>
+fn get_batches<I: Copy, O, F>(raw: Vec<I>, sample_size: usize, batch_size: usize, f: F) -> Vec<Tensor2<O>>
 where
     F: Fn(I) -> O,
 {
@@ -79,13 +62,15 @@ where
 pub fn max_index<T: Copy + PartialOrd>(a: &[T]) -> usize {
     a.iter()
         .enumerate()
-        .max_by(|&(_, &a), &(_, &b)| {
-            if a < b {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        })
+        .max_by(
+            |&(_, &a), &(_, &b)| {
+                if a < b {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            },
+        )
         .expect("expected at least one element")
         .0
 }

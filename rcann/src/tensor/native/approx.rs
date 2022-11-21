@@ -1,6 +1,6 @@
+use crate::tensor::{Dims, ITensor, Tensor, TensorCow, TensorView, TensorViewMut};
+use approx::AbsDiffEq;
 use std::iter::zip;
-use approx::{AbsDiffEq};
-use crate::tensor::{Dims, ITensor, Tensor, TensorView, TensorViewMut, TensorCow};
 
 macro_rules! impl_tensor_approx {
     ($type_name: ident $(, $l: lifetime )?) => {
@@ -51,5 +51,3 @@ impl_tensor_approx!(Tensor);
 impl_tensor_approx!(TensorView, 'a);
 impl_tensor_approx!(TensorViewMut, 'a);
 impl_tensor_approx!(TensorCow, 'a);
-
-

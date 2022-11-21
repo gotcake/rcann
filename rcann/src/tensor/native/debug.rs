@@ -56,7 +56,7 @@ fn fmt_tensor_data<T, D: Dims>(
     f: &mut Formatter,
     depth: usize,
     max_outer: usize,
-    max_inner: usize
+    max_inner: usize,
 ) -> std::fmt::Result
 where
     T: Debug,
@@ -64,14 +64,7 @@ where
     f.write_char('[')?;
     if t.len() > 0 {
         if D::N < 2 {
-            fmt_separated_max(
-                t.iter(),
-                t.len(),
-                max_inner,
-                f,
-                ", ",
-                &mut |el, f| Debug::fmt(el, f),
-            )?;
+            fmt_separated_max(t.iter(), t.len(), max_inner, f, ", ", &mut |el, f| Debug::fmt(el, f))?;
         } else {
             let indent = "   ".repeat(depth);
             let sep = format!(",\n{indent}   ");
@@ -90,17 +83,19 @@ where
     f.write_char(']')
 }
 
-fn format_tensor<T, D: Dims>(t: TensorView<T, D>, f: &mut Formatter, max_outer: usize, max_inner: usize) -> std::fmt::Result
+fn format_tensor<T, D: Dims>(
+    t: TensorView<T, D>,
+    f: &mut Formatter,
+    max_outer: usize,
+    max_inner: usize,
+) -> std::fmt::Result
 where
     T: Debug,
 {
     let dims = *t.dims();
     let len = t.len();
     fmt_tensor_data(t, f, 0, max_outer, max_inner)?;
-    write!(f, " dtype={} dims={} len={}",
-           std::any::type_name::<T>(),
-           dims,
-           len)
+    write!(f, " dtype={} dims={} len={}", std::any::type_name::<T>(), dims, len)
 }
 
 impl<T: Debug, D: Dims> Debug for Tensor<T, D> {
@@ -158,10 +153,7 @@ mod test {
 
     #[test]
     fn test_empty() {
-        assert_eq!(
-            "[] dtype=i32 dims=(0) len=0",
-            format!("{}", tensor![] as Tensor1<i32>)
-        );
+        assert_eq!("[] dtype=i32 dims=(0) len=0", format!("{}", tensor![] as Tensor1<i32>));
         assert_eq!(
             "[] dtype=i32 dims=(2, 0) len=0",
             format!("{}", tensor![[], []] as Tensor2<i32>)
@@ -194,7 +186,10 @@ mod test {
             "[\n   [1, 2],\n   [3, 4]\n] dtype=i32 dims=(2, 2) len=4",
             format!("{:?}", tensor![[1, 2], [3, 4]] as Tensor2<i32>)
         );
-        assert_eq!("[\n   [\n      [1, 2],\n      [3, 4],\n      [5, 6]\n   ]\n] dtype=i32 dims=(1, 3, 2) len=6", format!("{:?}", tensor![[[1, 2],[3, 4],[5, 6]]] as Tensor3<i32>));
+        assert_eq!(
+            "[\n   [\n      [1, 2],\n      [3, 4],\n      [5, 6]\n   ]\n] dtype=i32 dims=(1, 3, 2) len=6",
+            format!("{:?}", tensor![[[1, 2], [3, 4], [5, 6]]] as Tensor3<i32>)
+        );
         assert_eq!(
             "[1, 2, 3, 4, 5] dtype=i32 dims=(5) len=5",
             format!("{}", tensor![1, 2, 3, 4, 5] as Tensor1<i32>)
@@ -203,7 +198,10 @@ mod test {
             "[\n   [1, 2],\n   [3, 4]\n] dtype=i32 dims=(2, 2) len=4",
             format!("{}", tensor![[1, 2], [3, 4]] as Tensor2<i32>)
         );
-        assert_eq!("[\n   [\n      [1, 2],\n      [3, 4],\n      [5, 6]\n   ]\n] dtype=i32 dims=(1, 3, 2) len=6", format!("{}", tensor![[[1, 2],[3, 4],[5, 6]]] as Tensor3<i32>));
+        assert_eq!(
+            "[\n   [\n      [1, 2],\n      [3, 4],\n      [5, 6]\n   ]\n] dtype=i32 dims=(1, 3, 2) len=6",
+            format!("{}", tensor![[[1, 2], [3, 4], [5, 6]]] as Tensor3<i32>)
+        );
     }
 
     #[test]

@@ -1,14 +1,13 @@
-
+use crate::error::Error;
+use crate::tensor::OclTensor;
+use crate::util::{self, next_multiple, Result};
+use crate::wrap_cl_error;
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
 use opencl3::types::cl_uint;
 use rcann::tensor::{Dim2, ITensor};
-use crate::error::Error;
-use crate::tensor::OclTensor;
-use crate::util::{self, next_multiple, Result};
-use crate::wrap_cl_error;
 
 #[derive(Debug)]
 pub struct ZeroPaddingKernel {
@@ -22,7 +21,6 @@ mod kernel_const {
 }
 
 impl ZeroPaddingKernel {
-
     pub fn create(context: &Context) -> Result<Self> {
         let program = util::create_program(context, include_str!("zero_padding.cl"), "")?;
         let kernel = util::create_kernel(&program, "zero_padding")?;
@@ -30,7 +28,9 @@ impl ZeroPaddingKernel {
     }
 
     fn zero_padding(&self, queue: &CommandQueue, tensor: &mut OclTensor<f32, Dim2>) -> Result<()> {
-        if tensor.dims() == tensor.buffer_dims() { return Ok(()); }
+        if tensor.dims() == tensor.buffer_dims() {
+            return Ok(());
+        }
         let &Dim2(rows, _cols) = tensor.dims();
         let &Dim2(buff_rows, buff_cols) = tensor.buffer_dims();
 
@@ -53,6 +53,4 @@ impl ZeroPaddingKernel {
         tensor.set_dep(kernel_evt);
         Ok(())
     }
-
 }
-

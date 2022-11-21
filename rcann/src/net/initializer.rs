@@ -48,10 +48,7 @@ impl<T: DType> NetInitializer<T> for RandomNetInitializer {
     ) -> Vec<T> {
         let std = (2.0 / (input_size + output_size) as f64).sqrt();
         let dist = Normal::new(0.0, std).unwrap();
-        dist.sample_iter(&mut self.rng)
-            .take(count)
-            .map(T::from_f64)
-            .collect()
+        dist.sample_iter(&mut self.rng).take(count).map(T::from_f64).collect()
     }
 
     fn get_biases(&mut self, _layer_type: LayerType, count: usize, _layer_idx: usize) -> Vec<T> {
