@@ -7,16 +7,17 @@ use opencl3::context::Context;
 use opencl3::event::Event;
 use opencl3::memory::{Buffer, CL_MEM_READ_WRITE};
 use opencl3::types::{cl_double, cl_event, cl_float, CL_BLOCKING};
-use rcann::tensor::{Dims, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
+use rcann::dtype::DType;
+use rcann::tensor::{Dim1, Dim2, Dims, DimsZero, ITensor, Tensor, Tensor2, TensorBase, TensorBaseMut, TensorView};
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::mem;
 use std::ptr;
 use std::rc::Rc;
 
-pub trait OclDType: Copy + Default {}
-impl OclDType for cl_float {}
-impl OclDType for cl_double {}
+pub unsafe trait OclDType: DType {}
+unsafe impl OclDType for cl_float {}
+unsafe impl OclDType for cl_double {}
 
 pub const BLOCK_SIZE: usize = util::max_usize(
     kernels::gemm::constants::TILE_SIZE,
@@ -25,17 +26,19 @@ pub const BLOCK_SIZE: usize = util::max_usize(
 
 pub struct OclTensor<T: OclDType, D: Dims> {
     buffer: Buffer<T>,
-    len: usize,
     capacity: usize,
     dims: D,
     buffer_dims: D,
     deps: RefCell<Vec<Rc<Event>>>,
 }
 
+pub type OclTensor1<T> = OclTensor<T, Dim1>;
+pub type OclTensor2<T> = OclTensor<T, Dim2>;
+
 impl<T: OclDType, D: Dims> ITensor<T, D> for OclTensor<T, D> {
     #[inline]
     fn len(&self) -> usize {
-        self.len
+        self.dims.tensor_len()
     }
     #[inline]
     fn dims(&self) -> &D {
@@ -43,10 +46,13 @@ impl<T: OclDType, D: Dims> ITensor<T, D> for OclTensor<T, D> {
     }
 }
 
+fn compute_buff_dims<D: Dims>(dims: &D) -> D {
+    dims.map_each(|size, _| next_multiple(size, BLOCK_SIZE))
+}
+
 impl<T: OclDType, D: Dims> OclTensor<T, D> {
     pub unsafe fn uninit(context: &Context, dims: D) -> Result<Self> {
-        let len = dims.tensor_len();
-        let buffer_dims = dims.map_each(|size, _| next_multiple(size, BLOCK_SIZE));
+        let buffer_dims = compute_buff_dims(&dims);
         let capacity = buffer_dims.tensor_len();
         let buffer = wrap_cl_error!(
             Buffer::<T>::create(context, CL_MEM_READ_WRITE, capacity, ptr::null_mut()),
@@ -56,7 +62,6 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
             buffer,
             dims,
             buffer_dims,
-            len,
             capacity,
             deps: RefCell::new(Vec::new()),
         })
@@ -64,7 +69,6 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
 
     pub fn zeroed(context: &Context, queue: &CommandQueue, dims: D) -> Result<Self> {
         let mut tensor = unsafe { Self::uninit(context, dims)? };
-        //wrap_cl_error!(queue.enqueue_barrier_with_wait_list(), "failed to finish")?;
         tensor.fill(queue, T::default())?;
         Ok(tensor)
     }
@@ -77,6 +81,18 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         )?;
         self.set_dep(fill_event);
         Ok(())
+    }
+
+    pub fn resize_within_capacity(&mut self, dims: D) {
+        if dims != self.dims {
+            let buff_dims = compute_buff_dims(&dims);
+            let req_cap = buff_dims.tensor_len();
+            if req_cap > self.capacity {
+                panic!("Buffer dims {buff_dims} for dims {dims} has required capacity of {req_cap}, but allocated capacity is {}", self.capacity)
+            }
+            self.dims = dims;
+            self.buffer_dims = buff_dims
+        }
     }
 
     pub fn from_slice(context: &Context, queue: &CommandQueue, slice: &[T], dims: D) -> Result<Self> {
@@ -95,6 +111,11 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
     #[inline]
     pub fn buffer_dims(&self) -> &D {
         &self.buffer_dims
+    }
+
+    #[inline]
+    pub fn buffer_len(&self) -> usize {
+        self.buffer_dims.tensor_len()
     }
 
     pub fn sync(&self) -> Result<()> {
@@ -126,13 +147,13 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
                     queue.enqueue_read_buffer_rect(
                         &self.buffer,
                         CL_BLOCKING,
-                        [0, 0, 0].as_ptr(),                            // buffer_origin
-                        [0, 0, 0].as_ptr(),                            // host_origin
-                        region.as_ptr(),                               // region
-                        self.buffer_dims.last() * mem::size_of::<T>(), // buffer_row_pitch
-                        0,                                             // buffer_slice_pitch
-                        0,                                             // host_row_pitch
-                        0,                                             // host_slice_pitch
+                        [0, 0, 0].as_ptr(),                             // buffer_origin
+                        [0, 0, 0].as_ptr(),                             // host_origin
+                        region.as_ptr(),                                // region
+                        self.buffer_dims.minor() * mem::size_of::<T>(), // buffer_row_pitch
+                        0,                                              // buffer_slice_pitch
+                        0,                                              // host_row_pitch
+                        0,                                              // host_slice_pitch
                         dst.as_mut_ptr() as *mut c_void,
                         self.get_deps().as_slice(),
                     )
@@ -165,13 +186,13 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
                     queue.enqueue_write_buffer_rect(
                         &mut self.buffer,
                         CL_BLOCKING,
-                        [0, 0, 0].as_ptr(),                            // buffer_origin
-                        [0, 0, 0].as_ptr(),                            // host_origin
-                        region.as_ptr(),                               // region
-                        self.buffer_dims.last() * mem::size_of::<T>(), // buffer_row_pitch
-                        0,                                             // buffer_slice_pitch
-                        0,                                             // host_row_pitch
-                        0,                                             // host_slice_pitch
+                        [0, 0, 0].as_ptr(),                             // buffer_origin
+                        [0, 0, 0].as_ptr(),                             // host_origin
+                        region.as_ptr(),                                // region
+                        self.buffer_dims.minor() * mem::size_of::<T>(), // buffer_row_pitch
+                        0,                                              // buffer_slice_pitch
+                        0,                                              // host_row_pitch
+                        0,                                              // host_slice_pitch
                         src.as_ptr() as *mut c_void,
                         deps.as_slice(),
                     )
@@ -220,11 +241,8 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         self.deps.replace(Vec::new());
     }
 
-    pub fn as_native(&self, queue: &CommandQueue) -> Result<Tensor<T, D>>
-    where
-        T: Default + Clone,
-    {
-        let mut native = Tensor::filled_default(self.dims);
+    pub fn as_native(&self, queue: &CommandQueue) -> Result<Tensor<T, D>> {
+        let mut native = Tensor::zeroed(self.dims);
         self.read_sync(queue, &mut native)?;
         Ok(native)
     }
@@ -283,7 +301,6 @@ mod test {
         let TestContext { device, context, queue } = util::create_test_context()?;
         let native: Tensor2<f32> = tensor![[1., 2., 3.], [4., 5., 6.]];
         let ocl = OclTensor::from_native(&context, &queue, &native)?;
-        println!("{:?}", ocl.as_native_full_buff(&queue));
         assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
         Ok(())
     }

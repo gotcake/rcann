@@ -70,8 +70,8 @@ where
             let sep = format!(",\n{indent}   ");
             write!(f, "\n{indent}   ")?;
             fmt_separated_max(
-                t.iter_first_axis(),
-                t.dims().first(),
+                t.iter_major_axis(),
+                t.dims().major(),
                 max_outer,
                 f,
                 sep.as_str(),

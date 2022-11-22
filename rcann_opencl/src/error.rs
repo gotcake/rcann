@@ -9,6 +9,7 @@ pub enum Error {
         msg: Option<String>,
     },
     CreateProgramError(String),
+    TensorResizeError(String),
     NoDevicesFound,
 }
 

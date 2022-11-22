@@ -1,8 +1,7 @@
 __kernel void transpose(
-        const uint ROWS_IN, const uint COLS_IN,
+        const uint ROWS, const uint COLS,
         const uint ROW_STRIDE_IN,
-        const uint ROWS_OUT, const uint COLS_OUT,
-        const uint ROW_STRIDE_OUT,
+        const uint ROWS_OUT_BUFF, const uint COLS_OUT_BUFF,
         const __global float* input,
         __global float* output
 ) {
@@ -16,11 +15,12 @@ __kernel void transpose(
     __local float buffer[BLOCK_SIZE + 2][BLOCK_SIZE];
 
     // Save the block to a local buffer (coalesced)
-    if (g_row < ROWS_IN && g_col < COLS_IN) {
+    if (g_row < ROWS && g_col < COLS) {
         buffer[l_col][l_row] = input[g_row * ROW_STRIDE_IN + g_col];
-    } else {
+    }/* else {
+        // TODO: is this needed?
         buffer[l_col][l_row] = 0.0f;
-    }
+    }*/
 
     // Synchronise all threads
     barrier(CLK_LOCAL_MEM_FENCE);
@@ -29,8 +29,10 @@ __kernel void transpose(
     g_col = get_group_id(0) * BLOCK_SIZE + l_col;
 
     // Store the transposed result (coalesced)
-    if (g_row < ROWS_OUT && g_col < COLS_OUT) {
+    if (g_row < COLS && g_col < ROWS) {
         // rows and columns are swapped
-        output[g_row * ROW_STRIDE_OUT + g_col] = buffer[l_row][l_col];
+        output[g_row * COLS_OUT_BUFF + g_col] = buffer[l_row][l_col];
+    } else /*if (g_row < ROWS_OUT_BUFF && g_col < COLS_OUT_BUFF)*/ {
+        output[g_row * COLS_OUT_BUFF + g_col] = 0.0f;
     }
 }

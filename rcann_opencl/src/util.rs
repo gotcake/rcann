@@ -29,7 +29,7 @@ macro_rules! format_c_defines {
 #[macro_export]
 macro_rules! wrap_cl_error {
     ($res: expr, $($arg:tt)*) => {
-        ($res).map_err(|err| Error::from_cl_err(err, format!($($arg)*)))
+        ($res).map_err(|err| $crate::error::Error::from_cl_err(err, format!($($arg)*)))
     }
 }
 

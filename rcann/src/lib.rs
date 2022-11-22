@@ -5,6 +5,7 @@ pub mod loss;
 pub mod net;
 pub mod tensor;
 pub mod util;
+pub mod scoring;
 
 #[cfg(feature = "approx")]
 extern crate approx;

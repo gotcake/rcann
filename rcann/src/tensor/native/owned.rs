@@ -1,5 +1,6 @@
 use crate::tensor::dims::{Dim0, Dim1, Dim2, Dim3, Dims};
-use crate::tensor::{ITensor, TensorBase, TensorBaseMut};
+use crate::tensor::{DimsZero, ITensor, TensorBase, TensorBaseMut};
+use num_traits::Zero;
 use rand::distributions::Distribution;
 use rand::Rng;
 use std::mem::ManuallyDrop;
@@ -20,6 +21,16 @@ pub type Tensor2<T> = Tensor<T, Dim2>;
 pub type Tensor3<T> = Tensor<T, Dim3>;
 
 impl<T, D: Dims> Tensor<T, D> {
+    pub fn empty() -> Self
+    where
+        D: DimsZero,
+    {
+        Tensor {
+            data: Vec::new(),
+            dims: D::ZERO,
+        }
+    }
+
     pub fn from_vec(data: Vec<T>, dims: D) -> Self {
         assert_eq!(data.len(), dims.tensor_len());
         Tensor { data, dims }
@@ -51,12 +62,6 @@ impl<T> Tensor0<T> {
 }
 
 impl<T> Tensor1<T> {
-    pub fn empty_1d() -> Self {
-        Tensor {
-            data: Vec::new(),
-            dims: Dim1(0),
-        }
-    }
     pub fn from_vec_1d(data: Vec<T>) -> Self {
         let len = data.len();
         Tensor { data, dims: Dim1(len) }
@@ -64,12 +69,6 @@ impl<T> Tensor1<T> {
 }
 
 impl<T> Tensor2<T> {
-    pub fn empty_2d() -> Self {
-        Tensor {
-            data: Vec::new(),
-            dims: Dim2(0, 0),
-        }
-    }
     pub fn from_vec_2d<const N: usize>(vec: Vec<[T; N]>) -> Self {
         unsafe {
             let mut vec = ManuallyDrop::new(vec);
@@ -81,12 +80,6 @@ impl<T> Tensor2<T> {
 }
 
 impl<T> Tensor3<T> {
-    pub fn empty_3d() -> Self {
-        Tensor {
-            data: Vec::new(),
-            dims: Dim3(0, 0, 0),
-        }
-    }
     pub fn from_vec_3d<const N: usize, const M: usize>(vec: Vec<[[T; M]; N]>) -> Self {
         let inner_size: usize = N * M;
         unsafe {
@@ -105,7 +98,7 @@ impl<T: Clone, D: Dims> Tensor<T, D> {
             dims,
         }
     }
-    pub fn resize_fill(&mut self, fill: T, dims: D) {
+    pub fn resize(&mut self, fill: T, dims: D) {
         if self.dims != dims {
             let len = self.data.len();
             let new_len = dims.tensor_len();
@@ -115,20 +108,36 @@ impl<T: Clone, D: Dims> Tensor<T, D> {
             self.dims = dims;
         }
     }
+    pub fn resize_within_capacity(&mut self, fill: T, dims: D) {
+        if self.dims != dims {
+            let new_len = dims.tensor_len();
+            if new_len > self.data.capacity() {
+                panic!(
+                    "Dims {dims} with length {new_len} not within capacity {}",
+                    self.data.capacity()
+                );
+            }
+            let len = self.data.len();
+            if len != new_len {
+                self.data.resize(new_len, fill);
+            }
+            self.dims = dims;
+        }
+    }
+    #[inline]
     pub fn fill(&mut self, fill: T) {
         self.data.fill(fill);
     }
 }
 
-impl<T: Default + Clone, D: Dims> Tensor<T, D> {
-    pub fn filled_default(dims: D) -> Self {
-        Self::filled(T::default(), dims)
+impl<T: Zero + Clone, D: Dims> Tensor<T, D> {
+    #[inline]
+    pub fn zeroed(dims: D) -> Self {
+        Self::filled(T::zero(), dims)
     }
-    pub fn resize_fill_default(&mut self, dims: D) {
-        self.resize_fill(T::default(), dims);
-    }
-    pub fn fill_default(&mut self) {
-        self.data.fill(T::default());
+    #[inline]
+    pub fn fill_zero(&mut self) {
+        self.data.fill(T::zero());
     }
 }
 

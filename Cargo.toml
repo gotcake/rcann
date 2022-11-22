@@ -2,9 +2,9 @@
 
 members = [
     'rcann',
-    'rcann-examples',
-    'rcann-opencl'
+    'rcann_examples',
+    'rcann_opencl'
 ]
 
 [profile.dev]
-opt-level = 0
+opt-level = 1

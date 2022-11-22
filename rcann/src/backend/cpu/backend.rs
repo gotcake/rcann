@@ -1,20 +1,23 @@
 use super::math::{compute_jacobian_matrix, DTypeOps};
 use crate::backend::{Backend, BackendOther, MatrixMultiplication, TensorOps, TensorTyped};
-use crate::tensor::{Dim2, Dims, ITensor, Tensor, Tensor1, Tensor2, TensorBase, TensorBaseMut};
+use crate::tensor::{Dim2, Dims, DimsMore, DimsZero, ITensor, Tensor, Tensor1, Tensor2, TensorBase, TensorBaseMut};
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter, Write};
 use std::iter::zip;
 use std::ops::{Deref, DerefMut};
+use crate::backend::cpu::math::argmax;
 
 pub struct CpuBackend<DT: DTypeOps> {
+    max_batch_size: usize,
     temp_matrix: RefCell<Tensor2<DT>>,
 }
 
 impl<DT: DTypeOps> CpuBackend<DT> {
-    pub fn new() -> Self {
+    pub fn new(max_batch_size: usize) -> Self {
         CpuBackend {
-            temp_matrix: RefCell::new(Tensor2::empty_2d()),
+            max_batch_size,
+            temp_matrix: RefCell::new(Tensor2::empty()),
         }
     }
 }
@@ -22,23 +25,25 @@ impl<DT: DTypeOps> CpuBackend<DT> {
 impl<DT: DTypeOps> TensorTyped for CpuBackend<DT> {
     type DType = DT;
     type Tensor<D: Dims> = Tensor<DT, D>;
+    type InputAdaptionBuff<D: Dims> = ();
+    type OutputAdaptionBuff<D: Dims> = ();
 }
 
 impl<DT: DTypeOps> TensorOps for CpuBackend<DT> {
     #[inline]
-    fn new_tensor<D>(&self, dim: D) -> Tensor<DT, D>
-    where
-        D: Dims,
-    {
-        Tensor::filled_default(dim)
+    fn new_tensor_exact<D: Dims>(&self, dim: D) -> Tensor<DT, D> {
+        Tensor::zeroed(dim)
     }
+
+    fn new_tensor_batch_sized<D: DimsMore>(&self, inner_dims: D) -> Tensor<DT, D::More> {
+        Tensor::zeroed(inner_dims.insert_major(self.max_batch_size))
+    }
+
     #[inline]
-    fn resize_tensor<D>(&self, tensor: &mut Tensor<DT, D>, dims: D)
-    where
-        D: Dims,
-    {
-        tensor.resize_fill_default(dims)
+    fn resize_tensor<D: Dims>(&self, tensor: &mut Tensor<DT, D>, dims: D) {
+        tensor.resize_within_capacity(DT::ZERO, dims)
     }
+
     fn write_tensor<T, D>(&self, tensor: &mut Tensor<DT, D>, native_src: &T)
     where
         T: TensorBase<Self::DType, D>,
@@ -63,22 +68,33 @@ impl<DT: DTypeOps> TensorOps for CpuBackend<DT> {
     {
         native.into_owned()
     }
+
+    #[inline]
+    fn new_input_adaption_buff<D: DimsMore>(&self, _inner_dims: D) -> () {}
+
+    #[inline]
+    fn new_output_adaption_buff<D: DimsMore>(&self, _inner_dims: D) -> () {}
+
+    #[inline]
+    fn adapt_input<'a, D: Dims>(&self, _buff: &'a mut (), input: &'a Tensor<DT, D>) -> &'a Tensor<DT, D> {
+        input
+    }
+
+    #[inline]
+    fn adapt_output<'a, D: Dims>(&self, _buff: &'a mut (), output: &'a Tensor<DT, D>) -> &'a Tensor<DT, D> {
+        output
+    }
+
+    #[inline]
+    fn max_batch_size(&self) -> usize {
+        self.max_batch_size
+    }
 }
 
 impl<DT: DTypeOps> MatrixMultiplication for CpuBackend<DT> {
     #[inline]
-    fn matmul(
-        &self,
-        alpha: DT,
-        a: &Tensor2<DT>,
-        ta: bool,
-        b: &Tensor2<DT>,
-        tb: bool,
-        beta: DT,
-        c: &mut Tensor2<DT>,
-        tc: bool,
-    ) {
-        DT::matrix_multiply(alpha, a, ta, b, tb, beta, c, tc);
+    fn matmul(&self, alpha: DT, a: &Tensor2<DT>, ta: bool, b: &Tensor2<DT>, tb: bool, beta: DT, c: &mut Tensor2<DT>) {
+        DT::matrix_multiply(alpha, a, ta, b, tb, beta, c);
     }
 }
 
@@ -145,7 +161,7 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
 
     fn softmax(&self, activation: &Tensor2<DT>, output: &mut Tensor2<DT>) {
         assert_eq!(activation.dims(), output.dims());
-        for (mut output_row, activation_row) in zip(output.iter_first_axis_mut(), activation.iter_first_axis()) {
+        for (mut output_row, activation_row) in zip(output.iter_major_axis_mut(), activation.iter_major_axis()) {
             // shift the values by -max(inputs) to prevent overflow (does not affect derivative)
             let max = *activation_row
                 .iter()
@@ -167,10 +183,10 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
         let size = output.dims().cols();
         assert_eq!(output.dims(), result.dims());
         let mut temp = self.temp_matrix.borrow_mut();
-        self.resize_tensor(temp.deref_mut(), Dim2(size, size));
+        temp.resize(DT::ZERO, Dim2(size, size));
         for (mut result_row, (output_row, out_err_row)) in zip(
-            result.iter_first_axis_mut(),
-            zip(output.iter_first_axis(), out_error.iter_first_axis()),
+            result.iter_major_axis_mut(),
+            zip(output.iter_major_axis(), out_error.iter_major_axis()),
         ) {
             compute_jacobian_matrix(output_row.as_ref(), temp.deref_mut());
             DT::matrix_multiply(
@@ -181,7 +197,6 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
                 false,
                 DT::ZERO,
                 &mut result_row.as_row_matrix_mut(),
-                false,
             );
         }
     }
@@ -199,8 +214,8 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
         for (r, (rd_row, (o_row, e_row))) in zip(
             result,
             zip(
-                result_deriv.iter_first_axis_mut(),
-                zip(output.iter_first_axis(), expected.iter_first_axis()),
+                result_deriv.iter_major_axis_mut(),
+                zip(output.iter_major_axis(), expected.iter_major_axis()),
             ),
         ) {
             let mut sum_error = DT::ZERO;
@@ -211,6 +226,19 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
                 sum_error += diff * diff;
             }
             *r = sum_error / count;
+        }
+    }
+
+    #[inline]
+    fn flush(&self) {}
+    #[inline]
+    fn sync(&self) {}
+
+    fn accum_confusion_matrix_multiclass(&self, output: &Tensor2<DT>, expected: &Tensor2<DT>, matrix: &mut Tensor2<DT>) {
+        for (output_row, expected_row) in zip(output.iter_major_axis(), expected.iter_major_axis()) {
+            let out_idx = argmax(output_row.as_ref());
+            let expected_idx = argmax(expected_row.as_ref());
+            matrix[[out_idx, expected_idx]] += DT::ONE;
         }
     }
 }

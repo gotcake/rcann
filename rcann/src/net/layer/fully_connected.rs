@@ -38,7 +38,7 @@ impl<B: Backend> LayerParams<B> for FullyConnectedLayerParams {
             output_size,
             weights: backend.new_tensor_from_native(weights),
             biases: backend.new_tensor_from_native(biases),
-            activation: backend.new_tensor(Dim2(0, output_size)),
+            activation: backend.new_tensor_batch_sized(Dim1(output_size)),
             training_tensors: None,
             activation_fn: self.activation_fn,
         }
@@ -66,9 +66,9 @@ impl<B: Backend> FullyConnectedLayer<B> {
         FullyConnectedLayer {
             input_size,
             output_size,
-            weights: backend.new_tensor(Dim2(output_size, input_size)),
-            biases: backend.new_tensor(Dim1(output_size)),
-            activation: backend.new_tensor(Dim2(0, output_size)),
+            weights: backend.new_tensor_exact(Dim2(output_size, input_size)),
+            biases: backend.new_tensor_exact(Dim1(output_size)),
+            activation: backend.new_tensor_batch_sized(Dim1(output_size)),
             training_tensors: None,
             activation_fn,
         }
@@ -82,11 +82,11 @@ struct TrainingTensors<B: Backend> {
 }
 
 impl<B: Backend> TrainingTensors<B> {
-    fn new(backend: &B, num_rows: usize, size: usize, prev_size: usize) -> Self {
+    fn new(backend: &B, size: usize, prev_size: usize) -> Self {
         TrainingTensors {
-            activation_error: backend.new_tensor(Dim2(num_rows, size)),
-            weight_error: backend.new_tensor(Dim2(size, prev_size)),
-            bias_error: backend.new_tensor(Dim1(size)),
+            activation_error: backend.new_tensor_batch_sized(Dim1(size)),
+            weight_error: backend.new_tensor_exact(Dim2(size, prev_size)),
+            bias_error: backend.new_tensor_exact(Dim1(size)),
         }
     }
 }
@@ -106,7 +106,7 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
             "Invalid dimensions for output tensor"
         );
 
-        backend.resize_tensor_first_dim(&mut self.activation, num_rows);
+        backend.resize_tensor_major(&mut self.activation, num_rows);
         backend.matmul(
             B::DType::ONE,
             input,
@@ -115,7 +115,6 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
             true,
             B::DType::ZERO,
             &mut self.activation,
-            false,
         );
 
         self.activation_fn.compute(backend, &self.activation, output);
@@ -151,9 +150,9 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
 
         let tt = self
             .training_tensors
-            .get_or_insert_with(|| TrainingTensors::new(backend, num_rows, self.output_size, self.input_size));
+            .get_or_insert_with(|| TrainingTensors::new(backend, self.output_size, self.input_size));
 
-        backend.resize_tensor_first_dim(&mut tt.activation_error, num_rows);
+        backend.resize_tensor_major(&mut tt.activation_error, num_rows);
         self.activation_fn
             .compute_error(backend, &self.activation, output, out_error, &mut tt.activation_error);
 
@@ -171,7 +170,6 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
                 false,
                 B::DType::ZERO,
                 input_error,
-                false,
             );
         }
 
@@ -183,7 +181,6 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
             false,
             momentum,
             &mut tt.weight_error,
-            false,
         );
 
         backend.column_sum(learn_rate, &tt.activation_error, momentum, &mut tt.bias_error);

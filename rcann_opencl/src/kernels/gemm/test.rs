@@ -9,7 +9,7 @@ use rcann::tensor::Tensor;
 
 #[test]
 fn test_gemm() -> Result<()> {
-    let cpu_backend = CpuBackend::<f32>::new();
+    let cpu_backend = CpuBackend::<f32>::new(0);
 
     let TestContext { device, context, queue } = util::create_test_context()?;
     let kernel = GemmKernel::new(&context)?;
@@ -22,9 +22,9 @@ fn test_gemm() -> Result<()> {
 
     let a_native = Tensor::from_distribution(&mut rng, StandardNormal, Dim2(m, k));
     let b_native = Tensor::from_distribution(&mut rng, StandardNormal, Dim2(k, n));
-    let mut c_expected = Tensor::filled_default(Dim2(m, n));
+    let mut c_expected = Tensor::zeroed(Dim2(m, n));
 
-    cpu_backend.matmul(1.0, &a_native, false, &b_native, false, 0.0, &mut c_expected, false);
+    cpu_backend.matmul(1.0, &a_native, false, &b_native, false, 0.0, &mut c_expected);
 
     let a_ocl = OclTensor::from_native(&context, &queue, &a_native)?;
     let b_ocl = OclTensor::from_native(&context, &queue, &b_native)?;

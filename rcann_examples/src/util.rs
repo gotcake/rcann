@@ -20,7 +20,7 @@ pub fn load_mnist_data<D: DType>(train_samples: usize, test_samples: usize, batc
         tst_lbl,
         ..
     } = MnistBuilder::new()
-        .base_path("rcann-examples/data")
+        .base_path("rcann_examples/data")
         .label_format_one_hot()
         .training_set_length(train_samples as u32)
         .test_set_length(test_samples as u32)

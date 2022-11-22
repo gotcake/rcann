@@ -16,7 +16,7 @@ pub struct ZeroPaddingKernel {
     kernel: Kernel,
 }
 
-mod kernel_const {
+mod constants {
     pub const BLOCK_SIZE: usize = 16;
 }
 
@@ -27,23 +27,24 @@ impl ZeroPaddingKernel {
         Ok(Self { program, kernel })
     }
 
-    fn zero_padding(&self, queue: &CommandQueue, tensor: &mut OclTensor<f32, Dim2>) -> Result<()> {
+    // Note: Although tensor is not a &mut, this only kernel operates outside of the data range.
+    pub fn zero_padding(&self, queue: &CommandQueue, tensor: &OclTensor<f32, Dim2>) -> Result<()> {
         if tensor.dims() == tensor.buffer_dims() {
             return Ok(());
         }
-        let &Dim2(rows, _cols) = tensor.dims();
+        let &Dim2(rows, cols) = tensor.dims();
         let &Dim2(buff_rows, buff_cols) = tensor.buffer_dims();
 
         let mut exec = ExecuteKernel::new(&self.kernel);
         unsafe {
             exec.set_arg(&(rows as cl_uint))
+                .set_arg(&(cols as cl_uint))
                 .set_arg(&(buff_rows as cl_uint))
                 .set_arg(&(buff_cols as cl_uint))
                 .set_arg(tensor.buffer())
         };
-        let n = next_multiple(buff_cols, kernel_const::BLOCK_SIZE);
-        exec.set_local_work_size(kernel_const::BLOCK_SIZE)
-            .set_global_work_size(n);
+        let n = next_multiple(buff_cols, constants::BLOCK_SIZE);
+        exec.set_local_work_size(constants::BLOCK_SIZE).set_global_work_size(n);
         exec.set_event_wait_list(tensor.get_deps().as_slice());
 
         let kernel_evt = wrap_cl_error!(

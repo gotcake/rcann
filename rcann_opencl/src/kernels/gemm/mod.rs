@@ -38,7 +38,7 @@ pub mod constants {
 }
 
 impl GemmKernel {
-    pub fn new(context: &Context) -> Result<GemmKernel> {
+    pub fn new(context: &Context) -> Result<Self> {
         let mut code = format_c_defines!(
             "TILE_SIZE" => constants::TILE_SIZE,
             "WORK_PER_THREAD" => constants::WORK_PER_THREAD,

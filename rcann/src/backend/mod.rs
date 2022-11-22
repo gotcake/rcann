@@ -1,6 +1,7 @@
 use crate::dtype::DType;
-use crate::tensor::{Dim1, Dim2, Dims, ITensor, TensorBase, TensorBaseMut};
+use crate::tensor::{Dim1, Dim2, Dims, DimsMore, ITensor, Tensor, Tensor1, TensorBase, TensorBaseMut};
 use std::fmt::Debug;
+use std::process::Output;
 
 mod cpu;
 
@@ -9,15 +10,14 @@ pub use cpu::*;
 pub trait TensorTyped {
     type DType: DType;
     type Tensor<D: Dims>: ITensor<Self::DType, D>;
+    type InputAdaptionBuff<D: Dims>;
+    type OutputAdaptionBuff<D: Dims>;
 }
 
 pub trait TensorOps: TensorTyped {
-    fn new_tensor<D>(&self, dim: D) -> Self::Tensor<D>
-    where
-        D: Dims;
-    fn resize_tensor<D>(&self, tensor: &mut Self::Tensor<D>, dims: D)
-    where
-        D: Dims;
+    fn new_tensor_exact<D: Dims>(&self, dim: D) -> Self::Tensor<D>;
+    fn new_tensor_batch_sized<D: DimsMore>(&self, inner_dims: D) -> Self::Tensor<D::More>;
+    fn resize_tensor<D: Dims>(&self, tensor: &mut Self::Tensor<D>, dims: D);
     fn write_tensor<T, D>(&self, tensor: &mut Self::Tensor<D>, native_src: &T)
     where
         T: TensorBase<Self::DType, D>,
@@ -27,11 +27,8 @@ pub trait TensorOps: TensorTyped {
         T: TensorBaseMut<Self::DType, D>,
         D: Dims;
 
-    fn resize_tensor_first_dim<D>(&self, tensor: &mut Self::Tensor<D>, first_dim_size: usize)
-    where
-        D: Dims,
-    {
-        self.resize_tensor(tensor, tensor.dims().with_resized_first_axis(first_dim_size));
+    fn resize_tensor_major<D: Dims>(&self, tensor: &mut Self::Tensor<D>, size: usize) {
+        self.resize_tensor(tensor, tensor.dims().resize_major(size));
     }
 
     fn new_tensor_from_native<T, D>(&self, native: T) -> Self::Tensor<D>
@@ -39,10 +36,25 @@ pub trait TensorOps: TensorTyped {
         T: TensorBase<Self::DType, D>,
         D: Dims,
     {
-        let mut tensor = self.new_tensor(*native.dims());
+        let mut tensor = self.new_tensor_exact(*native.dims());
         self.write_tensor(&mut tensor, &native);
         tensor
     }
+
+    fn new_input_adaption_buff<D: DimsMore>(&self, inner_dims: D) -> Self::InputAdaptionBuff<D::More>;
+    fn new_output_adaption_buff<D: DimsMore>(&self, inner_dims: D) -> Self::OutputAdaptionBuff<D::More>;
+    fn adapt_input<'a, D: Dims>(
+        &self,
+        buff: &'a mut Self::InputAdaptionBuff<D>,
+        input: &'a Tensor<Self::DType, D>,
+    ) -> &'a Self::Tensor<D>;
+    fn adapt_output<'a, D: Dims>(
+        &self,
+        buff: &'a mut Self::OutputAdaptionBuff<D>,
+        output: &'a Self::Tensor<D>,
+    ) -> &'a Tensor<Self::DType, D>;
+
+    fn max_batch_size(&self) -> usize;
 }
 
 pub trait MatrixMultiplication: TensorTyped {
@@ -56,16 +68,13 @@ pub trait MatrixMultiplication: TensorTyped {
         tb: bool,
         beta: Self::DType,
         c: &mut Self::Tensor<Dim2>,
-        tc: bool,
     );
 }
 
 pub trait BackendOther: TensorTyped {
     fn column_sum(&self, alpha: Self::DType, a: &Self::Tensor<Dim2>, beta: Self::DType, b: &mut Self::Tensor<Dim1>);
 
-    fn add_assign<D>(&self, alpha: Self::DType, a: &Self::Tensor<D>, beta: Self::DType, b: &mut Self::Tensor<D>)
-    where
-        D: Dims;
+    fn add_assign<D: Dims>(&self, alpha: Self::DType, a: &Self::Tensor<D>, beta: Self::DType, b: &mut Self::Tensor<D>);
 
     /// computes the sigmoid function for all elements in a given tensor
     fn sigmoid(&self, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>);
@@ -101,6 +110,19 @@ pub trait BackendOther: TensorTyped {
         result: &mut Self::Tensor<Dim1>,
         result_deriv: &mut Self::Tensor<Dim2>,
     );
+
+    fn flush(&self);
+    fn sync(&self);
+
+    fn accum_confusion_matrix_multiclass(&self, output: &Self::Tensor<Dim2>, expected: &Self::Tensor<Dim2>, matrix: &mut Self::Tensor<Dim2>);
+
 }
 
 pub trait Backend: 'static + Debug + TensorTyped + TensorOps + MatrixMultiplication + BackendOther {}
+
+
+pub trait PreparedDataset {
+    type Batch;
+    type Iter: Iterator<Item=Self::Batch>;
+    fn iter_batches(&self) -> Self::Iter;
+}

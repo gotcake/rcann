@@ -2,7 +2,7 @@
 mod test;
 
 use crate::error::Error;
-use crate::tensor::OclTensor;
+use crate::tensor::{OclTensor, OclTensor2};
 use crate::util::{next_multiple, Result};
 use crate::{format_c_defines, util, wrap_cl_error};
 use opencl3::command_queue::CommandQueue;
@@ -33,26 +33,24 @@ impl TransposeKernel {
         let kernel = util::create_kernel(&program, "transpose")?;
         Ok(TransposeKernel { program, kernel })
     }
-    pub fn transpose(
-        &self,
-        queue: &CommandQueue,
-        input: &OclTensor<f32, Dim2>,
-        output: &mut OclTensor<f32, Dim2>,
-    ) -> Result<()> {
-        let &Dim2(in_rows, in_cols) = input.dims();
-        let &Dim2(out_rows, out_cols) = output.dims();
+    pub fn transpose(&self, queue: &CommandQueue, input: &OclTensor2<f32>, output: &mut OclTensor2<f32>) -> Result<()> {
+        assert_eq!(input.dims(), &output.dims().transposed());
+        let &Dim2(rows, cols) = input.dims();
+        let &Dim2(out_buff_rows, out_buff_cols) = output.buffer_dims();
         let in_row_stride = input.buffer_dims().cols();
-        let out_row_stride = output.buffer_dims().cols();
-        let m = next_multiple(in_rows.max(out_rows), constants::BLOCK_SIZE);
-        let n = next_multiple(in_cols.max(out_cols), constants::BLOCK_SIZE);
+        //let m = next_multiple(in_rows.max(out_rows), constants::BLOCK_SIZE);
+        //let n = next_multiple(in_cols.max(out_cols), constants::BLOCK_SIZE);
+        let m = out_buff_cols;
+        let n = out_buff_rows;
+        assert_eq!(m % constants::BLOCK_SIZE, 0);
+        assert_eq!(n % constants::BLOCK_SIZE, 0);
         let mut exec = ExecuteKernel::new(&self.kernel);
         unsafe {
-            exec.set_arg(&(in_rows as cl_uint))
-                .set_arg(&(in_cols as cl_uint))
+            exec.set_arg(&(rows as cl_uint))
+                .set_arg(&(cols as cl_uint))
                 .set_arg(&(in_row_stride as cl_uint))
-                .set_arg(&(out_rows as cl_uint))
-                .set_arg(&(out_cols as cl_uint))
-                .set_arg(&(out_row_stride as cl_uint))
+                .set_arg(&(out_buff_rows as cl_uint))
+                .set_arg(&(out_buff_cols as cl_uint))
                 .set_arg(input.buffer())
                 .set_arg(output.buffer());
         }

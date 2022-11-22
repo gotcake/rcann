@@ -253,16 +253,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "rcann-examples"
+name = "rcann_examples"
 version = "0.1.0"
 dependencies = [
  "mnist",
  "rand",
  "rcann",
+ "rcann_opencl",
 ]
 
 [[package]]
-name = "rcann-opencl"
+name = "rcann_opencl"
 version = "0.1.0"
 dependencies = [
  "approx",

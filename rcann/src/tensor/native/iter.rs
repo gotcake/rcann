@@ -1,5 +1,6 @@
-use crate::tensor::{Dims, TensorView, TensorViewMut};
+use crate::tensor::{Dims, DimsMore, TensorView, TensorViewMut};
 use std::marker::PhantomData;
+use std::slice::{Chunks, ChunksMut};
 
 // TODO: unsafe for zero sized types
 pub struct TensorIter<'a, T: 'a, D: Dims> {
@@ -117,6 +118,64 @@ macro_rules! impl_tensor_iter {
 
 impl_tensor_iter!(TensorIter, TensorView, from_raw_parts);
 impl_tensor_iter!(TensorIterMut, TensorViewMut, from_raw_parts_mut);
+
+pub struct TensorChunkIter<'a, T: 'a, D: DimsMore> {
+    chunk_iter: Chunks<'a, T>,
+    inner_dim: D,
+    inner_len: usize,
+}
+
+impl<'a, T: 'a, D: DimsMore> TensorChunkIter<'a, T, D> {
+    #[inline]
+    pub(super) unsafe fn new_unchecked(slice: &'a [T], inner_dim: D, size: usize) -> Self {
+        let inner_len = inner_dim.tensor_len();
+        Self {
+            chunk_iter: slice.chunks(inner_len * size),
+            inner_dim,
+            inner_len
+        }
+    }
+}
+
+impl<'a, T: 'a, D: DimsMore> Iterator for TensorChunkIter<'a, T, D> {
+    type Item = TensorView<'a, T, D::More>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.chunk_iter.next().map(|chunk| {
+            debug_assert_eq!(chunk.len() % self.inner_len, 0);
+            let dims = self.inner_dim.insert_major(chunk.len() / self.inner_len);
+            unsafe { TensorView::from_slice_unchecked(chunk, dims) }
+        })
+    }
+}
+
+pub struct TensorChunkIterMut<'a, T: 'a, D: DimsMore> {
+    chunk_iter: ChunksMut<'a, T>,
+    inner_dim: D,
+    inner_len: usize,
+}
+
+impl<'a, T: 'a, D: DimsMore> TensorChunkIterMut<'a, T, D> {
+    #[inline]
+    pub(super) unsafe fn new_unchecked(slice: &'a mut [T], inner_dim: D, size: usize) -> Self {
+        let inner_len = inner_dim.tensor_len();
+        Self {
+            chunk_iter: slice.chunks_mut(inner_len * size),
+            inner_dim,
+            inner_len
+        }
+    }
+}
+
+impl<'a, T: 'a, D: DimsMore> Iterator for TensorChunkIterMut<'a, T, D> {
+    type Item = TensorViewMut<'a, T, D::More>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.chunk_iter.next().map(|chunk| {
+            debug_assert_eq!(chunk.len() % self.inner_len, 0);
+            let dims = self.inner_dim.insert_major(chunk.len() / self.inner_len);
+            unsafe { TensorViewMut::from_slice_unchecked(chunk, dims) }
+        })
+    }
+}
 
 #[cfg(test)]
 mod test {

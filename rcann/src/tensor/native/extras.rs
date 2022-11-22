@@ -1,4 +1,4 @@
-use crate::tensor::{Dim1, Dim2, Dims, ITensor, Tensor, TensorCow, TensorView, TensorViewMut};
+use crate::tensor::{Dim1, Dim2, Dim3, Dims, ITensor, Tensor, TensorCow, TensorView, TensorViewMut};
 
 macro_rules! impl_tensor_extras {
     ($type_name: ident $(, $l: lifetime )?) => {
@@ -7,6 +7,22 @@ macro_rules! impl_tensor_extras {
             #[inline]
             fn index(&self, index: usize) -> &Self::Output {
                 self.as_ref().index(index)
+            }
+        }
+
+        impl<$($l,)?T> std::ops::Index<[usize; 2]> for $type_name<$($l,)?T, Dim2> {
+            type Output = T;
+            #[inline]
+            fn index(&self, index: [usize; 2]) -> &Self::Output {
+                self.as_ref().index(self.dims().get_compact_offset(&index))
+            }
+        }
+
+        impl<$($l,)?T> std::ops::Index<[usize; 3]> for $type_name<$($l,)?T, Dim3> {
+            type Output = T;
+            #[inline]
+            fn index(&self, index: [usize; 3]) -> &Self::Output {
+                self.as_ref().index(self.dims().get_compact_offset(&index))
             }
         }
 
@@ -54,6 +70,23 @@ macro_rules! impl_tensor_extras_mut {
                 self.as_mut().index_mut(index)
             }
         }
+
+        impl<$($l,)?T> std::ops::IndexMut<[usize; 2]> for $type_name<$($l,)?T, Dim2> {
+            #[inline]
+            fn index_mut(&mut self, index: [usize; 2]) -> &mut Self::Output {
+                let offset = self.dims().get_compact_offset(&index);
+                self.as_mut().index_mut(offset)
+            }
+        }
+
+        impl<$($l,)?T> std::ops::IndexMut<[usize; 3]> for $type_name<$($l,)?T, Dim3> {
+            #[inline]
+            fn index_mut(&mut self, index: [usize; 3]) -> &mut Self::Output {
+                let offset = self.dims().get_compact_offset(&index);
+                self.as_mut().index_mut(offset)
+            }
+        }
+
         impl<$($l,)?T> $type_name<$($l,)?T, Dim1> {
             pub fn as_row_matrix_mut(&mut self) -> TensorViewMut<T, Dim2> {
                 let dims = Dim2(1, self.len());
