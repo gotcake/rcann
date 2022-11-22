@@ -35,7 +35,7 @@ pub struct OclTensor<T: OclDType, D: Dims> {
 pub type OclTensor1<T> = OclTensor<T, Dim1>;
 pub type OclTensor2<T> = OclTensor<T, Dim2>;
 
-impl<T: OclDType, D: Dims> ITensor<T, D> for OclTensor<T, D> {
+impl<T: OclDType, D: Dims> ITensor<D> for OclTensor<T, D> {
     #[inline]
     fn len(&self) -> usize {
         self.dims.tensor_len()

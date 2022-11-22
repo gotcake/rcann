@@ -9,7 +9,7 @@ pub use cpu::*;
 
 pub trait TensorTyped {
     type DType: DType;
-    type Tensor<D: Dims>: ITensor<Self::DType, D>;
+    type Tensor<D: Dims>: ITensor<D>;
     type InputAdaptionBuff<D: Dims>;
     type OutputAdaptionBuff<D: Dims>;
 }

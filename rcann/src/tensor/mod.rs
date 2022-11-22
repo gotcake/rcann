@@ -9,7 +9,7 @@ pub use native::owned::*;
 pub use native::view::*;
 
 /// Generic Tensor type which is specialized by different backends
-pub trait ITensor<T, D: Dims> {
+pub trait ITensor<D: Dims> {
     fn len(&self) -> usize;
     fn dims(&self) -> &D;
 }

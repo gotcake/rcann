@@ -32,7 +32,7 @@ impl<'a, T: 'a, D: Dims> TensorView<'a, T, D> {
     }
 }
 
-impl<'a, T: 'a, D: Dims> ITensor<T, D> for TensorView<'a, T, D> {
+impl<'a, T: 'a, D: Dims> ITensor<D> for TensorView<'a, T, D> {
     #[inline]
     fn len(&self) -> usize {
         self.data.len()
@@ -97,7 +97,7 @@ pub type TensorViewMut1<'a, T> = TensorViewMut<'a, T, Dim1>;
 pub type TensorViewMut2<'a, T> = TensorViewMut<'a, T, Dim2>;
 pub type TensorViewMut3<'a, T> = TensorViewMut<'a, T, Dim3>;
 
-impl<'a, T: 'a, D: Dims> ITensor<T, D> for TensorViewMut<'a, T, D> {
+impl<'a, T: 'a, D: Dims> ITensor<D> for TensorViewMut<'a, T, D> {
     #[inline]
     fn len(&self) -> usize {
         self.data.len()

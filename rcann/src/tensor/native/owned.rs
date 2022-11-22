@@ -141,7 +141,7 @@ impl<T: Zero + Clone, D: Dims> Tensor<T, D> {
     }
 }
 
-impl<T, D: Dims> ITensor<T, D> for Tensor<T, D> {
+impl<T, D: Dims> ITensor<D> for Tensor<T, D> {
     #[inline]
     fn len(&self) -> usize {
         self.data.len()

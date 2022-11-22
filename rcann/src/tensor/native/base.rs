@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 use crate::tensor::{Dim1, Dims, DimsMore, ITensor, Tensor, TensorChunkIter, TensorChunkIterMut, TensorIter, TensorIterMut, TensorView, TensorView1, TensorViewMut, TensorViewMut1};
 use std::slice::{Iter, IterMut};
 
-pub trait TensorBase<T, D: Dims>: ITensor<T, D> + AsRef<[T]> + Index<usize, Output=T> {
+pub trait TensorBase<T, D: Dims>: ITensor<D> + AsRef<[T]> + Index<usize, Output=T> {
     fn is_owned(&self) -> bool;
     fn into_owned(self) -> Tensor<T, D>
     where

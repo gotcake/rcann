@@ -101,7 +101,7 @@ impl<T, D: Dims> TensorCow<'static, T, D> {
     }
 }
 
-impl<'a, T: 'a, D: Dims> ITensor<T, D> for TensorCow<'a, T, D> {
+impl<'a, T: 'a, D: Dims> ITensor<D> for TensorCow<'a, T, D> {
     #[inline]
     fn len(&self) -> usize {
         self.data.len()

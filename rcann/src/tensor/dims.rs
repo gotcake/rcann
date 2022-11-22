@@ -27,7 +27,7 @@ impl Dim2 {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct Dim3(pub usize, pub usize, pub usize);
 
-pub unsafe trait Dims: Copy + Debug + Eq + Display {
+pub unsafe trait Dims: 'static + Copy + Debug + Eq + Display {
     const N: usize;
     type Less: DimsMore;
     type Array;
