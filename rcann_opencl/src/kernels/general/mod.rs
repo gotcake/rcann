@@ -13,6 +13,7 @@ use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
 use opencl3::types::cl_uint;
 use rcann::tensor::{Dim2, Dims, ITensor};
+use crate::tensor::event_list::EventList;
 
 #[derive(Debug)]
 pub struct GeneralKernels {
@@ -64,12 +65,12 @@ impl GeneralKernels {
         }
         exec.set_local_work_size(constants::BLOCK_SIZE / constants::PER_THREAD)
             .set_global_work_size(n / constants::PER_THREAD);
-        exec.set_event_wait_list(activation.get_deps().as_slice());
+        exec.set_event_wait_list(activation.deps().as_slice());
         let kernel_evt = wrap_cl_error!(
             unsafe { exec.enqueue_nd_range(queue) },
             "Failed to enqueue sigmoid kernel"
         )?;
-        output.set_dep(kernel_evt);
+        output.set_deps(EventList::from_event(kernel_evt));
         Ok(())
     }
 
@@ -92,13 +93,13 @@ impl GeneralKernels {
         }
         exec.set_local_work_size(constants::BLOCK_SIZE / constants::PER_THREAD)
             .set_global_work_size(n / constants::PER_THREAD);
-        let deps = [output.get_deps(), error.get_deps()].concat();
+        let deps = EventList::concat([output.deps(), error.deps()]);
         exec.set_event_wait_list(deps.as_slice());
         let kernel_evt = wrap_cl_error!(
             unsafe { exec.enqueue_nd_range(queue) },
             "Failed to enqueue sigmoid_error kernel"
         )?;
-        result.set_dep(kernel_evt);
+        result.set_deps(EventList::from_event(kernel_evt));
         Ok(())
     }
 
@@ -122,13 +123,13 @@ impl GeneralKernels {
         }
         exec.set_local_work_size(constants::BLOCK_SIZE / constants::PER_THREAD)
             .set_global_work_size(n / constants::PER_THREAD);
-        let deps = [output.get_deps(), input.get_deps()].concat();
+        let deps = EventList::concat([output.deps(), input.deps()]);
         exec.set_event_wait_list(deps.as_slice());
         let kernel_evt = wrap_cl_error!(
             unsafe { exec.enqueue_nd_range(queue) },
             "Failed to enqueue add_assign kernel"
         )?;
-        output.set_dep(kernel_evt);
+        output.set_deps(EventList::from_event(kernel_evt));
         Ok(())
     }
 
@@ -156,13 +157,13 @@ impl GeneralKernels {
         }
         exec.set_local_work_size(constants::BLOCK_SIZE / constants::PER_THREAD)
             .set_global_work_size(n / constants::PER_THREAD);
-        let deps = [output.get_deps(), input.get_deps()].concat();
+        let deps = EventList::concat([output.deps(), input.deps()]);
         exec.set_event_wait_list(deps.as_slice());
         let kernel_evt = wrap_cl_error!(
             unsafe { exec.enqueue_nd_range(queue) },
             "Failed to enqueue column_sum kernel"
         )?;
-        output.set_dep(kernel_evt);
+        output.set_deps(EventList::from_event(kernel_evt));
         Ok(())
     }
 }

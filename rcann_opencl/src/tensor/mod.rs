@@ -1,3 +1,6 @@
+pub mod event_list;
+
+use std::borrow::Borrow;
 use crate::error::Error;
 use crate::kernels;
 use crate::util::{next_multiple, Result};
@@ -7,15 +10,17 @@ use opencl3::context::Context;
 use opencl3::event::Event;
 use opencl3::memory::{Buffer, CL_MEM_READ_WRITE};
 use opencl3::types::{cl_double, cl_event, cl_float, CL_BLOCKING};
-use rcann::dtype::DType;
+use rcann::dtype::DTypeFloat;
 use rcann::tensor::{Dim1, Dim2, Dims, DimsZero, ITensor, Tensor, Tensor2, TensorBase, TensorBaseMut, TensorView};
-use std::cell::RefCell;
+use std::cell::{Cell, Ref, RefCell};
 use std::ffi::c_void;
 use std::mem;
+use std::ops::Deref;
 use std::ptr;
 use std::rc::Rc;
+use crate::tensor::event_list::EventList;
 
-pub unsafe trait OclDType: DType {}
+pub unsafe trait OclDType: DTypeFloat {}
 unsafe impl OclDType for cl_float {}
 unsafe impl OclDType for cl_double {}
 
@@ -24,16 +29,28 @@ pub const BLOCK_SIZE: usize = util::max_usize(
     kernels::transpose::constants::BLOCK_SIZE,
 );
 
+
 pub struct OclTensor<T: OclDType, D: Dims> {
     buffer: Buffer<T>,
     capacity: usize,
     dims: D,
     buffer_dims: D,
-    deps: RefCell<Vec<Rc<Event>>>,
+    deps: RefCell<EventList>,
 }
 
 pub type OclTensor1<T> = OclTensor<T, Dim1>;
 pub type OclTensor2<T> = OclTensor<T, Dim2>;
+
+impl<'a, T: OclDType, D: Dims> ITensor<D> for &'a OclTensor<T, D> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.dims.tensor_len()
+    }
+    #[inline]
+    fn dims(&self) -> &D {
+        &self.dims
+    }
+}
 
 impl<T: OclDType, D: Dims> ITensor<D> for OclTensor<T, D> {
     #[inline]
@@ -63,23 +80,25 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
             dims,
             buffer_dims,
             capacity,
-            deps: RefCell::new(Vec::new()),
+            deps: RefCell::new(EventList::empty()),
         })
     }
 
     pub fn zeroed(context: &Context, queue: &CommandQueue, dims: D) -> Result<Self> {
         let mut tensor = unsafe { Self::uninit(context, dims)? };
-        tensor.fill(queue, T::default())?;
+        tensor.fill(queue, T::ZERO)?;
         Ok(tensor)
     }
 
     pub fn fill(&mut self, queue: &CommandQueue, value: T) -> Result<()> {
-        let deps = self.get_deps();
-        let fill_event = wrap_cl_error!(
-            unsafe { queue.enqueue_fill_buffer(&mut self.buffer, &[value], 0, self.capacity, deps.as_slice()) },
-            "Failed to enqueue fill buffer"
-        )?;
-        self.set_dep(fill_event);
+        let fill_event = {
+            let deps = self.deps.borrow();
+            wrap_cl_error!(
+                unsafe { queue.enqueue_fill_buffer(&mut self.buffer, &[value], 0, self.capacity, deps.as_slice()) },
+                "Failed to enqueue fill buffer"
+            )?
+        };
+        self.deps.replace(EventList::from_event(fill_event));
         Ok(())
     }
 
@@ -118,12 +137,11 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         self.buffer_dims.tensor_len()
     }
 
-    pub fn sync(&self) -> Result<()> {
-        if self.has_deps() {
-            let deps = self.deps.replace(Vec::new());
-            util::wait_for_events(util::get_raw_events(&deps).as_slice())
-        } else {
-            Ok(())
+    pub fn sync(&self) {
+        let mut deps = self.deps.borrow_mut();
+        if !deps.is_empty() {
+            util::wait_for_events(deps.as_slice());
+            deps.clear();
         }
     }
 
@@ -136,7 +154,7 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         let dst = dst.as_mut();
         if D::N <= 1 || self.dims == self.buffer_dims {
             wrap_cl_error!(
-                unsafe { queue.enqueue_read_buffer(&self.buffer, CL_BLOCKING, 0, dst, self.get_deps().as_slice()) },
+                unsafe { queue.enqueue_read_buffer(&self.buffer, CL_BLOCKING, 0, dst, self.deps.borrow().as_slice()) },
                 "Failed to enqueue read buffer"
             )?;
         } else {
@@ -155,7 +173,7 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
                         0,                                              // host_row_pitch
                         0,                                              // host_slice_pitch
                         dst.as_mut_ptr() as *mut c_void,
-                        self.get_deps().as_slice(),
+                        self.deps.borrow().as_slice(),
                     )
                 },
                 "Failed to enqueue read buffer rect"
@@ -171,7 +189,7 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
     {
         assert!(D::N <= 3, "Unsupported dimensionality");
         assert_eq!(&self.dims, src.dims(), "Mismatched tensor dimensions");
-        let deps = self.get_deps();
+        let deps = self.deps.borrow();
         let src = src.as_ref();
         if D::N <= 1 || self.dims == self.buffer_dims {
             wrap_cl_error!(
@@ -200,6 +218,7 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
                 "Failed to enqueue write buffer rect"
             )?;
         }
+        drop(deps);
         self.clear_deps();
         Ok(())
     }
@@ -215,36 +234,53 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
     }
 
     #[inline]
-    pub fn has_deps(&self) -> bool {
-        !self.deps.borrow().is_empty()
+    pub fn deps(&self) -> Ref<EventList> {
+        self.deps.borrow()
     }
 
-    pub fn get_deps(&self) -> Vec<cl_event> {
-        util::get_raw_events(&self.deps.borrow())
+    #[inline]
+    pub fn clear_deps(&self) {
+        self.deps.replace(EventList::empty());
     }
 
-    pub fn set_dep<E>(&self, dep: E)
-    where
-        E: Into<Rc<Event>>,
-    {
-        self.deps.replace(vec![dep.into()]);
-    }
-
-    pub fn set_deps<E>(&self, deps: Vec<E>)
-    where
-        E: Into<Rc<Event>>,
-    {
-        self.deps.replace(deps.into_iter().map(|e| e.into()).collect());
-    }
-
-    fn clear_deps(&self) {
-        self.deps.replace(Vec::new());
+    #[inline]
+    pub fn set_deps(&self, deps: EventList) {
+        self.deps.replace(deps);
     }
 
     pub fn as_native(&self, queue: &CommandQueue) -> Result<Tensor<T, D>> {
         let mut native = Tensor::zeroed(self.dims);
         self.read_sync(queue, &mut native)?;
         Ok(native)
+    }
+}
+
+pub enum OclTensorRef<'a, T: OclDType, D: Dims> {
+    Borrowed(&'a OclTensor<T, D>),
+    Owned(OclTensor<T, D>),
+}
+
+impl<'a, T: OclDType, D: Dims> From<OclTensor<T, D>> for OclTensorRef<'a, T, D> {
+    fn from(tensor: OclTensor<T, D>) -> Self {
+        OclTensorRef::Owned(tensor)
+    }
+}
+
+impl<'a, T: OclDType, D: Dims> From<&'a OclTensor<T, D>> for OclTensorRef<'a, T, D> {
+    fn from(tensor: &'a OclTensor<T, D>) -> Self {
+        OclTensorRef::Borrowed(tensor)
+    }
+}
+
+impl<'a, T: OclDType, D: Dims> Deref for OclTensorRef<'a, T, D> {
+    type Target = OclTensor<T, D>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        use OclTensorRef::*;
+        match self {
+            &Borrowed(tensor) => tensor,
+            Owned(tensor) => tensor,
+        }
     }
 }
 

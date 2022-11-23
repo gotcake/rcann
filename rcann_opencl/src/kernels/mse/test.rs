@@ -7,7 +7,7 @@ use rand::prelude::StdRng;
 use rand::SeedableRng;
 use rand_distr::StandardNormal;
 use rcann::backend::{BackendOther, CpuBackend};
-use rcann::tensor::{Dim1, Dim2, ITensor, Tensor1, Tensor2};
+use rcann::tensor::{Dim1, Dim2, ITensor, Tensor1, Tensor2, TensorBase};
 
 #[test]
 fn test_mean_squared_error() -> Result<()> {
@@ -23,7 +23,7 @@ fn test_mean_squared_error() -> Result<()> {
     let mut expected_result_deriv = Tensor2::zeroed(*output_vals.dims());
     cpu.mean_squared_error(
         &output_vals,
-        &expected_vals,
+        expected_vals.view(),
         &mut expected_result,
         &mut expected_result_deriv,
     );

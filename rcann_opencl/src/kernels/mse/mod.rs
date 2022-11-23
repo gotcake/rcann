@@ -10,7 +10,7 @@ use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
 use opencl3::types::cl_uint;
 use rcann::tensor::{Dim2, ITensor};
-use std::rc::Rc;
+use crate::tensor::event_list::EventList;
 
 #[derive(Debug)]
 pub struct MSEKernel {
@@ -60,14 +60,15 @@ impl MSEKernel {
                 .set_arg(result_deriv.buffer());
         }
         exec.set_local_work_size(constants::GROUP_SIZE).set_global_work_size(n);
-        let deps = [output.get_deps(), expected.get_deps()].concat();
+        let deps = EventList::concat([output.deps(), expected.deps()]);
         exec.set_event_wait_list(deps.as_slice());
-        let kernel_evt = Rc::new(wrap_cl_error!(
+        let kernel_evt = wrap_cl_error!(
             unsafe { exec.enqueue_nd_range(queue) },
             "Failed to enqueue transpose kernel"
-        )?);
-        result.set_dep(kernel_evt.clone());
-        result_deriv.set_dep(kernel_evt);
+        )?;
+        let events = EventList::from_event(kernel_evt);
+        result.set_deps(events.clone());
+        result_deriv.set_deps(events);
         Ok(())
     }
 }

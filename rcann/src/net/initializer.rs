@@ -1,11 +1,11 @@
-use crate::dtype::DType;
+use crate::dtype::DTypeFloat;
 use crate::net::layer::LayerType;
 use rand::distributions::Distribution;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rand_distr::Normal;
 
-pub trait NetInitializer<T: DType> {
+pub trait NetInitializer<T: DTypeFloat> {
     fn get_weights(
         &mut self,
         layer_type: LayerType,
@@ -37,7 +37,7 @@ impl Default for RandomNetInitializer {
     }
 }
 
-impl<T: DType> NetInitializer<T> for RandomNetInitializer {
+impl<T: DTypeFloat> NetInitializer<T> for RandomNetInitializer {
     fn get_weights(
         &mut self,
         _layer_type: LayerType,

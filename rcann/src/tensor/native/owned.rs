@@ -1,5 +1,5 @@
 use crate::tensor::dims::{Dim0, Dim1, Dim2, Dim3, Dims};
-use crate::tensor::{DimsZero, ITensor, TensorBase, TensorBaseMut};
+use crate::tensor::{DimsZero, ITensor, TensorBase, TensorBaseMut, TensorView};
 use num_traits::Zero;
 use rand::distributions::Distribution;
 use rand::Rng;

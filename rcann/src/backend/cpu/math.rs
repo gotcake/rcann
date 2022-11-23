@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
-use crate::dtype::DType;
+use crate::dtype::DTypeFloat;
 use crate::tensor::{Dim2, ITensor, Tensor2, TensorBase, TensorBaseMut};
 
-pub fn compute_jacobian_matrix<T: DType>(a: &[T], b: &mut Tensor2<T>) {
+pub fn compute_jacobian_matrix<T: DTypeFloat>(a: &[T], b: &mut Tensor2<T>) {
     let size = a.len();
     assert_eq!(b.dims(), &Dim2(size, size));
     let pa = a.as_ptr();
@@ -39,7 +39,7 @@ pub fn argmax<T: Copy + PartialOrd>(a: &[T]) -> usize {
         .0
 }
 
-pub trait DTypeOps: DType {
+pub trait DTypeOps: DTypeFloat {
     fn matrix_multiply<A, B, C>(alpha: Self, a: &A, ta: bool, b: &B, tb: bool, beta: Self, c: &mut C)
     where
         A: TensorBase<Self, Dim2>,

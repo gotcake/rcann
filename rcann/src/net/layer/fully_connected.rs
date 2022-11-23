@@ -1,6 +1,6 @@
 use crate::activation::ActivationFn;
 use crate::backend::Backend;
-use crate::dtype::DType;
+use crate::dtype::{DType, DTypeFloat};
 use crate::net::layer::{ConcreteLayerParams, Layer, LayerParams, LayerType, NetInitializer};
 use crate::tensor::{Dim1, Dim2, ITensor, Tensor1, Tensor2};
 use std::fmt::{Debug, Formatter};
@@ -19,7 +19,7 @@ impl<B: Backend> LayerParams<B> for FullyConnectedLayerParams {
         backend: &B,
         layer_idx: usize,
         input_size: usize,
-        initializer: &mut dyn NetInitializer<B::DType>,
+        initializer: &mut dyn NetInitializer<B::Float>,
     ) -> Self::Layer where {
         let output_size = self.size;
         let weights = Tensor2::from_vec(
@@ -92,7 +92,7 @@ impl<B: Backend> TrainingTensors<B> {
 }
 
 impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
-    fn forward(&mut self, backend: &B, input: &B::Tensor<Dim2>, output: &mut B::Tensor<Dim2>) {
+    fn forward(&mut self, backend: &B, input: B::TensorRef<'_, Dim2>, output: &mut B::Tensor<Dim2>) {
         let num_rows = input.dims().rows();
 
         assert_eq!(
@@ -108,12 +108,12 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
 
         backend.resize_tensor_major(&mut self.activation, num_rows);
         backend.matmul(
-            B::DType::ONE,
+            B::Float::ONE,
             input,
             false,
-            &self.weights,
+            B::TensorRef::from(&self.weights),
             true,
-            B::DType::ZERO,
+            B::Float::ZERO,
             &mut self.activation,
         );
 
@@ -123,12 +123,12 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
     fn backprop(
         &mut self,
         backend: &B,
-        input: &B::Tensor<Dim2>,
+        input: B::TensorRef<'_, Dim2>,
         output: &B::Tensor<Dim2>,
         input_error: Option<&mut B::Tensor<Dim2>>,
         out_error: &B::Tensor<Dim2>,
-        learn_rate: B::DType,
-        momentum: B::DType,
+        learn_rate: B::Float,
+        momentum: B::Float,
     ) {
         let num_rows = input.dims().rows();
 
@@ -163,19 +163,19 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
                 "Invalid dimensions for input_error"
             );
             backend.matmul(
-                B::DType::ONE,
-                &tt.activation_error,
+                B::Float::ONE,
+                B::TensorRef::from(&tt.activation_error),
                 false,
-                &self.weights,
+                B::TensorRef::from(&self.weights),
                 false,
-                B::DType::ZERO,
+                B::Float::ZERO,
                 input_error,
             );
         }
 
         backend.matmul(
             learn_rate,
-            &tt.activation_error,
+            B::TensorRef::from(&tt.activation_error),
             true,
             input,
             false,
@@ -185,9 +185,9 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
 
         backend.column_sum(learn_rate, &tt.activation_error, momentum, &mut tt.bias_error);
 
-        backend.add_assign(-B::DType::ONE, &tt.weight_error, B::DType::ONE, &mut self.weights);
+        backend.add_assign(-B::Float::ONE, &tt.weight_error, B::Float::ONE, &mut self.weights);
 
-        backend.add_assign(-B::DType::ONE, &tt.bias_error, B::DType::ONE, &mut self.biases);
+        backend.add_assign(-B::Float::ONE, &tt.bias_error, B::Float::ONE, &mut self.biases);
     }
 
     #[inline]

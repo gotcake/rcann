@@ -20,7 +20,7 @@ impl<B: Backend> LayerParams<B> for ConcreteLayerParams {
         backend: &B,
         layer_idx: usize,
         input_size: usize,
-        initializer: &mut dyn NetInitializer<B::DType>,
+        initializer: &mut dyn NetInitializer<B::Float>,
     ) -> Self::Layer {
         match self {
             ConcreteLayerParams::FullyConnected(params) => {
@@ -48,19 +48,19 @@ impl<B: Backend> ConcreteLayer<B> {
 }
 
 impl<B: Backend> Layer<B> for ConcreteLayer<B> {
-    fn forward(&mut self, backend: &B, input: &B::Tensor<Dim2>, output: &mut B::Tensor<Dim2>) {
+    fn forward(&mut self, backend: &B, input: B::TensorRef<'_, Dim2>, output: &mut B::Tensor<Dim2>) {
         self.inner_mut().forward(backend, input, output)
     }
 
     fn backprop(
         &mut self,
         backend: &B,
-        input: &B::Tensor<Dim2>,
+        input: B::TensorRef<'_, Dim2>,
         output: &B::Tensor<Dim2>,
         input_error: Option<&mut B::Tensor<Dim2>>,
         output_error: &B::Tensor<Dim2>,
-        learn_rate: B::DType,
-        momentum: B::DType,
+        learn_rate: B::Float,
+        momentum: B::Float,
     ) {
         self.inner_mut()
             .backprop(backend, input, output, input_error, output_error, learn_rate, momentum)

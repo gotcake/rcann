@@ -12,7 +12,7 @@ impl LossFn {
         &self,
         backend: &B,
         output: &B::Tensor<Dim2>,
-        expected: &B::Tensor<Dim2>,
+        expected: B::TensorRef<'_, Dim2>,
         result: &mut B::Tensor<Dim1>,
         result_deriv: &mut B::Tensor<Dim2>,
     ) {

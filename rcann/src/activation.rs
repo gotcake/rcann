@@ -1,5 +1,5 @@
 use crate::backend::Backend;
-use crate::dtype::DType;
+use crate::dtype::{DType, DTypeFloat};
 use crate::tensor::Dim2;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ impl ActivationFn {
     pub fn compute<B: Backend>(&self, backend: &B, activation: &B::Tensor<Dim2>, output: &mut B::Tensor<Dim2>) {
         match self {
             ActivationFn::Sigmoid => backend.sigmoid(activation, output),
-            &ActivationFn::ReLU { leak } => backend.relu(B::DType::from_f64(leak), activation, output),
+            &ActivationFn::ReLU { leak } => backend.relu(B::Float::from_f64(leak), activation, output),
             ActivationFn::Softmax => backend.softmax(activation, output),
         }
     }
@@ -34,7 +34,7 @@ impl ActivationFn {
     ) {
         match self {
             ActivationFn::Sigmoid => backend.sigmoid_error(output, out_error, result),
-            &ActivationFn::ReLU { leak } => backend.relu_error(B::DType::from_f64(leak), activation, out_error, result),
+            &ActivationFn::ReLU { leak } => backend.relu_error(B::Float::from_f64(leak), activation, out_error, result),
             ActivationFn::Softmax => backend.softmax_error(output, out_error, result),
         }
     }

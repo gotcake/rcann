@@ -5,7 +5,7 @@ use rand::prelude::StdRng;
 use rand::SeedableRng;
 use rand_distr::StandardNormal;
 use rcann::backend::{CpuBackend, MatrixMultiplication};
-use rcann::tensor::Tensor;
+use rcann::tensor::{Tensor, TensorBase};
 
 #[test]
 fn test_gemm() -> Result<()> {
@@ -24,7 +24,7 @@ fn test_gemm() -> Result<()> {
     let b_native = Tensor::from_distribution(&mut rng, StandardNormal, Dim2(k, n));
     let mut c_expected = Tensor::zeroed(Dim2(m, n));
 
-    cpu_backend.matmul(1.0, &a_native, false, &b_native, false, 0.0, &mut c_expected);
+    cpu_backend.matmul(1.0, a_native.view(), false, b_native.view(), false, 0.0, &mut c_expected);
 
     let a_ocl = OclTensor::from_native(&context, &queue, &a_native)?;
     let b_ocl = OclTensor::from_native(&context, &queue, &b_native)?;

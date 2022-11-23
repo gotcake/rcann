@@ -11,6 +11,7 @@ use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
 use opencl3::types::cl_uint;
 use rcann::tensor::Dim2;
+use crate::tensor::event_list::EventList;
 
 #[derive(Debug)]
 pub struct GemmKernel {
@@ -91,10 +92,10 @@ impl GemmKernel {
         };
         exec.set_local_work_sizes(&[constants::TILE_SIZE, constants::REDUCED_TILE_SIZE]) // TODO?
             .set_global_work_sizes(&[m, n / constants::WORK_PER_THREAD]);
-        let deps = [a.get_deps(), b.get_deps(), c.get_deps()].concat();
+        let deps = EventList::concat([a.deps(), b.deps(), c.deps()]);
         exec.set_event_wait_list(deps.as_slice());
         let kernel_evt = wrap_cl_error!(unsafe { exec.enqueue_nd_range(queue) }, "Failed to enqueue gemm kernel")?;
-        c.set_dep(kernel_evt);
+        c.set_deps(EventList::from_event(kernel_evt));
         Ok(())
     }
 }

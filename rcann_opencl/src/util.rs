@@ -2,7 +2,7 @@ use crate::error::Error;
 use opencl3::command_queue::{CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE};
 use opencl3::context::Context;
 use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
-use opencl3::event::Event;
+use opencl3::event::{Event, retain_event};
 use opencl3::kernel::Kernel;
 use opencl3::program::Program;
 use opencl3::types::cl_event;
@@ -10,6 +10,7 @@ use rcann::tensor::{Dim3, Dims};
 use std::mem;
 use std::rc::Rc;
 
+#[inline]
 pub const fn next_multiple(n: usize, of: usize) -> usize {
     let rem = n % of;
     if rem == 0 {
@@ -57,7 +58,7 @@ pub fn create_kernel(program: &Program, name: &str) -> Result<Kernel> {
 
 pub fn create_queue(context: &Context) -> Result<CommandQueue> {
     wrap_cl_error!(
-        CommandQueue::create_default_with_properties(context, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, 0,),
+        CommandQueue::create_default_with_properties(context, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, 0),
         "Failed to create queue"
     )
 }
@@ -89,8 +90,8 @@ pub fn get_raw_events(events: &[Rc<Event>]) -> Vec<cl_event> {
 }
 
 #[inline]
-pub fn wait_for_events(events: &[cl_event]) -> Result<()> {
-    wrap_cl_error!(opencl3::event::wait_for_events(events), "Failed to wait for events")
+pub fn wait_for_events(events: &[cl_event]) {
+    opencl3::event::wait_for_events(events).expect("Failed to wait for events");
 }
 
 #[inline]

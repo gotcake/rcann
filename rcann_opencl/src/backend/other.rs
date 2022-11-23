@@ -4,11 +4,11 @@ use rcann::tensor::{Dim1, Dim2, Dims};
 use crate::wrap_cl_error;
 
 impl BackendOther for OpenCLBackend {
-    fn column_sum(&self, alpha: Self::DType, a: &Self::Tensor<Dim2>, beta: Self::DType, b: &mut Self::Tensor<Dim1>) {
+    fn column_sum(&self, alpha: Self::Float, a: &Self::Tensor<Dim2>, beta: Self::Float, b: &mut Self::Tensor<Dim1>) {
         self.general_kernels.column_sum(&self.queue, alpha, a, beta, b).unwrap();
     }
 
-    fn add_assign<D>(&self, alpha: Self::DType, a: &Self::Tensor<D>, beta: Self::DType, b: &mut Self::Tensor<D>)
+    fn add_assign<D>(&self, alpha: Self::Float, a: &Self::Tensor<D>, beta: Self::Float, b: &mut Self::Tensor<D>)
     where
         D: Dims,
     {
@@ -30,13 +30,13 @@ impl BackendOther for OpenCLBackend {
             .unwrap();
     }
 
-    fn relu(&self, leak: Self::DType, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>) {
+    fn relu(&self, leak: Self::Float, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>) {
         todo!()
     }
 
     fn relu_error(
         &self,
-        leak: Self::DType,
+        leak: Self::Float,
         activation: &Self::Tensor<Dim2>,
         out_error: &Self::Tensor<Dim2>,
         result: &mut Self::Tensor<Dim2>,
@@ -82,7 +82,7 @@ impl BackendOther for OpenCLBackend {
         wrap_cl_error!(self.queue.finish(), "Error finishing queue").unwrap()
     }
 
-    fn accum_confusion_matrix_multiclass(&self, output: &Self::Tensor<Dim2>, expected: &Self::Tensor<Dim2>, matrix: &mut Self::Tensor<Dim2>) {
+    fn accum_confusion_matrix_multiclass(&self, matrix: &mut Self::Tensor<Dim2>, output: &Self::Tensor<Dim2>, expected: &Self::Tensor<Dim2>) {
         todo!()
     }
 }

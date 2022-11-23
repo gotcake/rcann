@@ -1,5 +1,5 @@
-use crate::dtype::DType;
-use crate::tensor::{Dim1, Dim2, Dims, DimsMore, ITensor, Tensor, Tensor1, TensorBase, TensorBaseMut};
+use crate::dtype::{DTypeFloat, DTypeSInt, DTypeUInt};
+use crate::tensor::{Dim1, Dim2, Dims, DimsMore, ITensor, Tensor, Tensor1, TensorBase, TensorBaseMut, TensorView};
 use std::fmt::Debug;
 use std::process::Output;
 
@@ -8,8 +8,9 @@ mod cpu;
 pub use cpu::*;
 
 pub trait TensorTyped {
-    type DType: DType;
+    type Float: DTypeFloat;
     type Tensor<D: Dims>: ITensor<D>;
+    type TensorRef<'a, D: Dims>: ITensor<D> + Clone + From<&'a Self::Tensor<D>> where Self: 'a;
     type InputAdaptionBuff<D: Dims>;
     type OutputAdaptionBuff<D: Dims>;
 }
@@ -20,11 +21,11 @@ pub trait TensorOps: TensorTyped {
     fn resize_tensor<D: Dims>(&self, tensor: &mut Self::Tensor<D>, dims: D);
     fn write_tensor<T, D>(&self, tensor: &mut Self::Tensor<D>, native_src: &T)
     where
-        T: TensorBase<Self::DType, D>,
+        T: TensorBase<Self::Float, D>,
         D: Dims;
     fn read_tensor<T, D>(&self, tensor: &Self::Tensor<D>, native_dst: &mut T)
     where
-        T: TensorBaseMut<Self::DType, D>,
+        T: TensorBaseMut<Self::Float, D>,
         D: Dims;
 
     fn resize_tensor_major<D: Dims>(&self, tensor: &mut Self::Tensor<D>, size: usize) {
@@ -33,7 +34,7 @@ pub trait TensorOps: TensorTyped {
 
     fn new_tensor_from_native<T, D>(&self, native: T) -> Self::Tensor<D>
     where
-        T: TensorBase<Self::DType, D>,
+        T: TensorBase<Self::Float, D>,
         D: Dims,
     {
         let mut tensor = self.new_tensor_exact(*native.dims());
@@ -41,18 +42,24 @@ pub trait TensorOps: TensorTyped {
         tensor
     }
 
+    fn tensor_as_native<D: Dims>(&self, tensor: &Self::Tensor<D>) -> Tensor<Self::Float, D> {
+        let mut native = Tensor::zeroed(tensor.dims().clone());
+        self.read_tensor(&tensor, &mut native);
+        native
+    }
+
     fn new_input_adaption_buff<D: DimsMore>(&self, inner_dims: D) -> Self::InputAdaptionBuff<D::More>;
     fn new_output_adaption_buff<D: DimsMore>(&self, inner_dims: D) -> Self::OutputAdaptionBuff<D::More>;
     fn adapt_input<'a, D: Dims>(
         &self,
         buff: &'a mut Self::InputAdaptionBuff<D>,
-        input: &'a Tensor<Self::DType, D>,
-    ) -> &'a Self::Tensor<D>;
+        input: TensorView<'a, Self::Float, D>,
+    ) -> Self::TensorRef<'a, D>;
     fn adapt_output<'a, D: Dims>(
         &self,
         buff: &'a mut Self::OutputAdaptionBuff<D>,
         output: &'a Self::Tensor<D>,
-    ) -> &'a Tensor<Self::DType, D>;
+    ) -> &'a Tensor<Self::Float, D>;
 
     fn max_batch_size(&self) -> usize;
 }
@@ -61,20 +68,20 @@ pub trait MatrixMultiplication: TensorTyped {
     /// performs a generic matrix multiplication (gemm) operation
     fn matmul(
         &self,
-        alpha: Self::DType,
-        a: &Self::Tensor<Dim2>,
+        alpha: Self::Float,
+        a: Self::TensorRef<'_, Dim2>,
         ta: bool,
-        b: &Self::Tensor<Dim2>,
+        b: Self::TensorRef<'_, Dim2>,
         tb: bool,
-        beta: Self::DType,
+        beta: Self::Float,
         c: &mut Self::Tensor<Dim2>,
     );
 }
 
 pub trait BackendOther: TensorTyped {
-    fn column_sum(&self, alpha: Self::DType, a: &Self::Tensor<Dim2>, beta: Self::DType, b: &mut Self::Tensor<Dim1>);
+    fn column_sum(&self, alpha: Self::Float, a: &Self::Tensor<Dim2>, beta: Self::Float, b: &mut Self::Tensor<Dim1>);
 
-    fn add_assign<D: Dims>(&self, alpha: Self::DType, a: &Self::Tensor<D>, beta: Self::DType, b: &mut Self::Tensor<D>);
+    fn add_assign<D: Dims>(&self, alpha: Self::Float, a: &Self::Tensor<D>, beta: Self::Float, b: &mut Self::Tensor<D>);
 
     /// computes the sigmoid function for all elements in a given tensor
     fn sigmoid(&self, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>);
@@ -86,10 +93,10 @@ pub trait BackendOther: TensorTyped {
     );
 
     /// computes the leaky ReLU function for all elements in a given tensor
-    fn relu(&self, leak: Self::DType, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>);
+    fn relu(&self, leak: Self::Float, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>);
     fn relu_error(
         &self,
-        leak: Self::DType,
+        leak: Self::Float,
         activation: &Self::Tensor<Dim2>,
         out_error: &Self::Tensor<Dim2>,
         result: &mut Self::Tensor<Dim2>,
@@ -106,7 +113,7 @@ pub trait BackendOther: TensorTyped {
     fn mean_squared_error(
         &self,
         output: &Self::Tensor<Dim2>,
-        expected: &Self::Tensor<Dim2>,
+        expected: Self::TensorRef<'_, Dim2>,
         result: &mut Self::Tensor<Dim1>,
         result_deriv: &mut Self::Tensor<Dim2>,
     );
@@ -114,7 +121,7 @@ pub trait BackendOther: TensorTyped {
     fn flush(&self);
     fn sync(&self);
 
-    fn accum_confusion_matrix_multiclass(&self, output: &Self::Tensor<Dim2>, expected: &Self::Tensor<Dim2>, matrix: &mut Self::Tensor<Dim2>);
+    fn accum_confusion_matrix_multiclass(&self, matrix: &mut Self::Tensor<Dim2>, output: &Self::Tensor<Dim2>, expected: Self::TensorRef<'_, Dim2>);
 
 }
 

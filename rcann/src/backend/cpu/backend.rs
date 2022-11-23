@@ -1,6 +1,6 @@
 use super::math::{compute_jacobian_matrix, DTypeOps};
 use crate::backend::{Backend, BackendOther, MatrixMultiplication, TensorOps, TensorTyped};
-use crate::tensor::{Dim2, Dims, DimsMore, DimsZero, ITensor, Tensor, Tensor1, Tensor2, TensorBase, TensorBaseMut};
+use crate::tensor::{Dim2, Dims, DimsMore, DimsZero, ITensor, Tensor, Tensor1, Tensor2, TensorBase, TensorBaseMut, TensorView, TensorView2};
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter, Write};
@@ -23,7 +23,8 @@ impl<DT: DTypeOps> CpuBackend<DT> {
 }
 
 impl<DT: DTypeOps> TensorTyped for CpuBackend<DT> {
-    type DType = DT;
+    type Float = DT;
+    type TensorRef<'a, D: Dims> = TensorView<'a, DT, D>;
     type Tensor<D: Dims> = Tensor<DT, D>;
     type InputAdaptionBuff<D: Dims> = ();
     type OutputAdaptionBuff<D: Dims> = ();
@@ -46,7 +47,7 @@ impl<DT: DTypeOps> TensorOps for CpuBackend<DT> {
 
     fn write_tensor<T, D>(&self, tensor: &mut Tensor<DT, D>, native_src: &T)
     where
-        T: TensorBase<Self::DType, D>,
+        T: TensorBase<Self::Float, D>,
         D: Dims,
     {
         assert_eq!(tensor.dims(), native_src.dims());
@@ -54,7 +55,7 @@ impl<DT: DTypeOps> TensorOps for CpuBackend<DT> {
     }
     fn read_tensor<T, D>(&self, tensor: &Tensor<DT, D>, native_dst: &mut T)
     where
-        T: TensorBaseMut<Self::DType, D>,
+        T: TensorBaseMut<Self::Float, D>,
         D: Dims,
     {
         assert_eq!(tensor.dims(), native_dst.dims());
@@ -63,7 +64,7 @@ impl<DT: DTypeOps> TensorOps for CpuBackend<DT> {
     #[inline]
     fn new_tensor_from_native<T, D>(&self, native: T) -> Tensor<DT, D>
     where
-        T: TensorBase<Self::DType, D>,
+        T: TensorBase<Self::Float, D>,
         D: Dims,
     {
         native.into_owned()
@@ -76,7 +77,7 @@ impl<DT: DTypeOps> TensorOps for CpuBackend<DT> {
     fn new_output_adaption_buff<D: DimsMore>(&self, _inner_dims: D) -> () {}
 
     #[inline]
-    fn adapt_input<'a, D: Dims>(&self, _buff: &'a mut (), input: &'a Tensor<DT, D>) -> &'a Tensor<DT, D> {
+    fn adapt_input<'a, D: Dims>(&self, _buff: &'a mut (), input: TensorView<'a, DT, D>) -> TensorView<'a, DT, D> {
         input
     }
 
@@ -93,8 +94,8 @@ impl<DT: DTypeOps> TensorOps for CpuBackend<DT> {
 
 impl<DT: DTypeOps> MatrixMultiplication for CpuBackend<DT> {
     #[inline]
-    fn matmul(&self, alpha: DT, a: &Tensor2<DT>, ta: bool, b: &Tensor2<DT>, tb: bool, beta: DT, c: &mut Tensor2<DT>) {
-        DT::matrix_multiply(alpha, a, ta, b, tb, beta, c);
+    fn matmul(&self, alpha: DT, a: TensorView2<DT>, ta: bool, b: TensorView2<DT>, tb: bool, beta: DT, c: &mut Tensor2<DT>) {
+        DT::matrix_multiply(alpha, &a, ta, &b, tb, beta, c);
     }
 }
 
@@ -204,7 +205,7 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
     fn mean_squared_error(
         &self,
         output: &Tensor2<DT>,
-        expected: &Tensor2<DT>,
+        expected: TensorView2<DT>,
         result: &mut Tensor1<DT>,
         result_deriv: &mut Tensor2<DT>,
     ) {
@@ -234,11 +235,11 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
     #[inline]
     fn sync(&self) {}
 
-    fn accum_confusion_matrix_multiclass(&self, output: &Tensor2<DT>, expected: &Tensor2<DT>, matrix: &mut Tensor2<DT>) {
+    fn accum_confusion_matrix_multiclass(&self, matrix: &mut Tensor2<DT>, output: &Tensor2<DT>, expected: TensorView2<DT>) {
         for (output_row, expected_row) in zip(output.iter_major_axis(), expected.iter_major_axis()) {
             let out_idx = argmax(output_row.as_ref());
             let expected_idx = argmax(expected_row.as_ref());
-            matrix[[out_idx, expected_idx]] += DT::ONE;
+            matrix[[expected_idx, out_idx]] += DT::ONE;
         }
     }
 }

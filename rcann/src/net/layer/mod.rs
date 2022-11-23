@@ -22,22 +22,22 @@ pub trait LayerParams<B: Backend>: Clone + Debug {
         backend: &B,
         layer_idx: usize,
         input_size: usize,
-        initializer: &mut dyn NetInitializer<B::DType>,
+        initializer: &mut dyn NetInitializer<B::Float>,
     ) -> Self::Layer;
 }
 
 pub trait Layer<B: Backend>: Debug {
-    fn forward(&mut self, backend: &B, input: &B::Tensor<Dim2>, output: &mut B::Tensor<Dim2>);
+    fn forward(&mut self, backend: &B, input: B::TensorRef<'_, Dim2>, output: &mut B::Tensor<Dim2>);
 
     fn backprop(
         &mut self,
         backend: &B,
-        input: &B::Tensor<Dim2>,
+        input: B::TensorRef<'_, Dim2>,
         output: &B::Tensor<Dim2>,
         input_error: Option<&mut B::Tensor<Dim2>>,
         output_error: &B::Tensor<Dim2>,
-        learn_rate: B::DType,
-        momentum: B::DType,
+        learn_rate: B::Float,
+        momentum: B::Float,
     );
 
     fn input_size(&self) -> usize;

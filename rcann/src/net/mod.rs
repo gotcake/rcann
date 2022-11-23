@@ -2,10 +2,13 @@ use crate::backend::Backend;
 use crate::loss::LossFn;
 use crate::net::initializer::{NetInitializer, RandomNetInitializer};
 use crate::net::layer::{ConcreteLayer, ConcreteLayerParams, Layer, LayerParams};
-use crate::tensor::{Dim0, Dim1, Dim2, Dims, ITensor, Tensor, Tensor1, Tensor2, Tensor3, TensorBase};
+use crate::tensor::{Dim0, Dim1, Dim2, Dims, ITensor, Tensor, Tensor1, Tensor2, Tensor3, TensorBase, TensorView, TensorView2};
 use std::fmt::{Debug, Formatter};
 use std::iter::zip;
-use crate::scoring::Scorer;
+use rand::Rng;
+use rand::seq::SliceRandom;
+use crate::dtype::{DType, DTypeFloat};
+use crate::scoring::{NoOpScorer, Scorer};
 
 pub mod initializer;
 pub mod layer;
@@ -56,7 +59,7 @@ impl<B: Backend> RawNet<B> {
         }
     }
 
-    fn forward(&mut self, input: &B::Tensor<Dim2>) {
+    fn forward(&mut self, input: B::TensorRef<'_, Dim2>) {
         let num_rows = input.dims().rows();
         self.backend.resize_tensor_major(&mut self.first_output, num_rows);
         self.first.forward(&self.backend, input, &mut self.first_output);
@@ -64,21 +67,21 @@ impl<B: Backend> RawNet<B> {
         let mut input = &self.first_output;
         for (layer, output) in zip(self.hidden.iter_mut(), self.hidden_outputs.iter_mut()) {
             self.backend.resize_tensor_major(output, num_rows);
-            layer.forward(&self.backend, input, output);
+            layer.forward(&self.backend, B::TensorRef::from(input), output);
             input = output;
         }
 
         self.backend.resize_tensor_major(&mut self.last_output, num_rows);
-        self.last.forward(&self.backend, input, &mut self.last_output);
+        self.last.forward(&self.backend, B::TensorRef::from(input), &mut self.last_output);
     }
 
     fn backprop(
         &mut self,
-        input: &B::Tensor<Dim2>,
-        expected: &B::Tensor<Dim2>,
+        input: B::TensorRef<'_, Dim2>,
+        expected: B::TensorRef<'_, Dim2>,
         loss: &LossFn,
-        learn_rate: B::DType,
-        momentum: B::DType,
+        learn_rate: B::Float,
+        momentum: B::Float,
     ) {
         let num_rows= input.dims().rows();
         self.backend.resize_tensor(&mut self.output_error_buff, Dim1(num_rows));
@@ -100,7 +103,7 @@ impl<B: Backend> RawNet<B> {
         self.backend.resize_tensor_major(&mut self.last_input_error, num_rows);
         self.last.backprop(
             &self.backend,
-            last_input,
+            B::TensorRef::from(last_input),
             &self.last_output,
             Some(&mut self.last_input_error),
             &self.output_error_deriv_buff,
@@ -124,7 +127,7 @@ impl<B: Backend> RawNet<B> {
             self.backend.resize_tensor_major(input_error, num_rows);
             layer.backprop(
                 &self.backend,
-                layer_input,
+                B::TensorRef::from(layer_input),
                 output,
                 Some(input_error),
                 output_error,
@@ -149,7 +152,7 @@ impl<B: Backend> RawNet<B> {
 pub struct NetBuilder<B: Backend> {
     backend: B,
     input_size: usize,
-    initializer: Box<dyn NetInitializer<B::DType>>,
+    initializer: Box<dyn NetInitializer<B::Float>>,
     layers: Vec<ConcreteLayerParams>,
 }
 
@@ -164,7 +167,7 @@ impl<B: Backend> NetBuilder<B> {
     }
     pub fn with_initializer<I>(mut self, initializer: I) -> Self
     where
-        I: 'static + NetInitializer<B::DType>,
+        I: 'static + NetInitializer<B::Float>,
     {
         self.initializer = Box::new(initializer);
         self
@@ -241,7 +244,7 @@ impl<B: Backend> Net<B> {
         }
     }
 
-    pub fn predict(&mut self, input: &Tensor2<B::DType>) -> &Tensor2<B::DType> {
+    pub fn predict(&mut self, input: TensorView2<B::Float>) -> &Tensor2<B::Float> {
         let &Dim2(num_rows, num_cols) = input.dims();
         let max_batch_size = self.max_batch_size();
         assert_eq!(
@@ -262,12 +265,12 @@ impl<B: Backend> Net<B> {
 
     pub fn train_batch(
         &mut self,
-        input: &Tensor2<B::DType>,
-        expected: &Tensor2<B::DType>,
+        input: TensorView2<B::Float>,
+        expected: TensorView2<B::Float>,
         loss: &LossFn,
-        learn_rate: B::DType,
-        momentum: B::DType,
-    ) -> TrainBatchResult<B::DType> {
+        learn_rate: B::Float,
+        momentum: B::Float,
+    ) -> TrainBatchResult<B::Float> {
         let &Dim2(num_rows, num_cols) = input.dims();
         let max_batch_size = self.max_batch_size();
 
@@ -289,7 +292,7 @@ impl<B: Backend> Net<B> {
         let input = self.raw.backend.adapt_input(&mut self.input_buff, input);
         let expected = self.raw.backend.adapt_input(&mut self.expected_buff, expected);
 
-        self.raw.forward(input);
+        self.raw.forward(input.clone());
         self.raw
             .backprop(input, expected, &loss, learn_rate, momentum);
 
@@ -305,69 +308,93 @@ impl<B: Backend> Net<B> {
         TrainBatchResult { output, error }
     }
 
-    fn train_epoch_raw<S: Scorer<B>>(
+
+    fn train_epoch<S: Scorer<B>>(
         &mut self,
-        input_batches: &[B::Tensor<Dim2>],
-        expected_batches: &[B::Tensor<Dim2>],
+        batches: &[(B::TensorRef<'_, Dim2>, B::TensorRef<'_, Dim2>)],
         loss: &LossFn,
-        learn_rate: B::DType,
-        momentum: B::DType,
+        learn_rate: B::Float,
+        momentum: B::Float,
         scorer: &mut S,
     ) {
-        debug_assert_eq!(input_batches.len(), expected_batches.len(), "inputs and expected must be the same length");
-        for (input, expected) in zip(input_batches, expected_batches) {
+        for (input, expected) in batches {
             let num_rows = input.dims().rows();
             debug_assert_eq!(num_rows, expected.dims().rows());
             debug_assert_eq!(input.dims().cols(), self.input_size());
             debug_assert_eq!(expected.dims().cols(), self.output_size());
-            self.raw.forward(input);
+            self.raw.forward(input.clone());
             self.raw
-                .backprop(input, expected, &loss, learn_rate, momentum);
-            scorer.process_batch(&self.raw.backend, &self.raw.last_output, expected);
+                .backprop(input.clone(), expected.clone(), &loss, learn_rate, momentum);
+            scorer.process_batch(&self.raw.backend, &self.raw.last_output, expected.clone());
             self.raw.backend.flush();
         }
         self.raw.backend.sync();
     }
 
-    fn evaluate_raw<S: Scorer<B>>(
+    pub fn train<R: Rng>(
         &mut self,
-        input_batches: &[B::Tensor<Dim2>],
-        expected_batches: &[B::Tensor<Dim2>],
-        scorer: &mut S,
+        rng: &mut R,
+        input: TensorView2<B::Float>,
+        expected: TensorView2<B::Float>,
+        num_epochs: usize,
     ) {
-        debug_assert_eq!(input_batches.len(), expected_batches.len(), "inputs and expected must be the same length");
-        for (input, expected) in zip(input_batches, expected_batches) {
-            let num_rows = input.dims().rows();
-            debug_assert_eq!(num_rows, expected.dims().rows());
-            debug_assert_eq!(input.dims().cols(), self.input_size());
-            debug_assert_eq!(expected.dims().cols(), self.output_size());
-            self.raw.forward(input);
-            scorer.process_batch(&self.raw.backend, &self.raw.last_output, expected);
-            self.raw.backend.flush();
-        }
-        self.raw.backend.sync();
-    }
-
-    /*
-    fn evaluate<S: Scorer<B>> (
-        &mut self,
-        inputs: &Tensor2<B::DType>,
-        expected: &Tensor2<B::DType>,
-        scorer: &mut S,
-    ) {
-        assert_eq!(inputs.dims().rows(), expected.dims().rows(), "Mismatched number of rows in inputs and expected");
-        assert_eq!(inputs.dims().cols(), self.input_size(), "Mismatched number of columns in inputs");
+        let input_size = self.input_size();
+        let output_size = self.output_size();
+        assert_eq!(input.dims().rows(), expected.dims().rows(), "Mismatched number of rows in input and expected");
+        assert_eq!(input.dims().cols(), self.input_size(), "Mismatched number of columns in input");
         assert_eq!(expected.dims().cols(), self.output_size(), "Mismatched number of columns in expected");
         let batch_size = self.raw.backend.max_batch_size();
-        for (input_batch, expected_batch) in zip(inputs.iter_major_axis_chunks(batch_size), expected.iter_major_axis_chunks(batch_size)) {
-            // note: this sucks
-            let input_batch = self.raw.backend.adapt_input(&mut self.input_buff, &input_batch.into_owned());
-            self.raw.forward(input_batch);
-            self.raw
-                .backend
-                .adapt_output(&mut self.output_buff, &self.raw.last_output)
+        let num_batches = (input.dims().rows() as f64 / batch_size as f64).ceil() as usize;
+
+        // allocate buffers for the input and expected data
+        let mut buffers: Vec<_> = (0..num_batches).map(|_| {
+            (
+                self.raw.backend.new_input_adaption_buff(Dim1(input_size)),
+                self.raw.backend.new_input_adaption_buff(Dim1(output_size)),
+            )
+        }).collect();
+
+        let mut batches = Vec::with_capacity(num_batches);
+
+        // convert input to backend format
+        for ((input_batch, expected_batch), (input_buff, expected_buff)) in zip(zip(input.iter_major_axis_chunks(batch_size), expected.iter_major_axis_chunks(batch_size)), buffers.iter_mut()) {
+            batches.push((
+                self.raw.backend.adapt_input(input_buff, input_batch),
+                self.raw.backend.adapt_input(expected_buff, expected_batch),
+            ));
         }
-    }*/
+
+
+        for i in 0..num_epochs {
+            batches.shuffle(rng);
+            self.train_epoch(
+                &batches,
+                &LossFn::MSE,
+                B::Float::from_f64(0.1),
+                B::Float::from_f64(0.1),
+                &mut NoOpScorer,
+            );
+            println!("epoch {i}");
+        }
+    }
+
+    pub fn evaluate<S: Scorer<B>> (
+        &mut self,
+        input: TensorView2<B::Float>,
+        expected: TensorView2<B::Float>,
+        scorer: &mut S,
+    ) {
+        assert_eq!(input.dims().rows(), expected.dims().rows(), "Mismatched number of rows in inputs and expected");
+        assert_eq!(input.dims().cols(), self.input_size(), "Mismatched number of columns in inputs");
+        assert_eq!(expected.dims().cols(), self.output_size(), "Mismatched number of columns in expected");
+        let batch_size = self.raw.backend.max_batch_size();
+        for (input_batch, expected_batch) in zip(input.iter_major_axis_chunks(batch_size), expected.iter_major_axis_chunks(batch_size)) {
+            let input_batch = self.raw.backend.adapt_input(&mut self.input_buff, input_batch);
+            let expected_batch = self.raw.backend.adapt_input(&mut self.expected_buff, expected_batch);
+            self.raw.forward(input_batch);
+            scorer.process_batch(&self.raw.backend, &self.raw.last_output, expected_batch)
+        }
+    }
 
     #[inline]
     pub fn input_size(&self) -> usize {

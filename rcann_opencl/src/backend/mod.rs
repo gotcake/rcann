@@ -6,14 +6,14 @@ use crate::kernels::general::GeneralKernels;
 use crate::kernels::mse::MSEKernel;
 use crate::kernels::transpose::TransposeKernel;
 use crate::kernels::zero_padding::ZeroPaddingKernel;
-use crate::tensor::OclTensor;
+use crate::tensor::{OclTensor, OclTensorRef};
 use crate::util::{self, Result};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::device::Device;
 use opencl3::types::cl_float;
 use rcann::backend::{Backend, TensorOps, TensorTyped};
-use rcann::tensor::{Dims, DimsMore, ITensor, Tensor, TensorBase, TensorBaseMut};
+use rcann::tensor::{Dims, DimsMore, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
 use std::fmt::Debug;
 
 #[derive(Debug)]
@@ -70,10 +70,11 @@ impl OpenCLBackend {
 }
 
 impl TensorTyped for OpenCLBackend {
-    type DType = cl_float;
+    type Float = cl_float;
+    type TensorRef<'a, D: Dims> = &'a OclTensor<cl_float, D>;
     type Tensor<D: Dims> = OclTensor<cl_float, D>;
     type InputAdaptionBuff<D: Dims> = OclTensor<cl_float, D>;
-    type OutputAdaptionBuff<D: Dims> = Tensor<Self::DType, D>;
+    type OutputAdaptionBuff<D: Dims> = Tensor<Self::Float, D>;
 }
 
 impl TensorOps for OpenCLBackend {
@@ -91,7 +92,7 @@ impl TensorOps for OpenCLBackend {
 
     fn write_tensor<T, D>(&self, tensor: &mut Self::Tensor<D>, native_src: &T)
     where
-        T: TensorBase<Self::DType, D>,
+        T: TensorBase<Self::Float, D>,
         D: Dims,
     {
         tensor.write_sync(&self.queue, native_src).unwrap();
@@ -99,7 +100,7 @@ impl TensorOps for OpenCLBackend {
 
     fn read_tensor<T, D>(&self, tensor: &Self::Tensor<D>, native_dst: &mut T)
     where
-        T: TensorBaseMut<Self::DType, D>,
+        T: TensorBaseMut<Self::Float, D>,
         D: Dims,
     {
         tensor.read_sync(&self.queue, native_dst).unwrap();
@@ -116,18 +117,18 @@ impl TensorOps for OpenCLBackend {
     fn adapt_input<'a, D: Dims>(
         &self,
         buff: &'a mut OclTensor<f32, D>,
-        input: &'a Tensor<Self::DType, D>,
+        input: TensorView<Self::Float, D>,
     ) -> &'a OclTensor<f32, D> {
         buff.resize_within_capacity(*input.dims());
-        buff.write_sync(&self.queue, input).unwrap();
+        buff.write_sync(&self.queue, &input).unwrap();
         buff
     }
 
     fn adapt_output<'a, D: Dims>(
         &self,
-        buff: &'a mut Tensor<Self::DType, D>,
+        buff: &'a mut Tensor<Self::Float, D>,
         output: &'a OclTensor<f32, D>,
-    ) -> &'a Tensor<Self::DType, D> {
+    ) -> &'a Tensor<Self::Float, D> {
         buff.resize_within_capacity(0.0, *output.dims());
         output.read_sync(&self.queue, buff).unwrap();
         buff

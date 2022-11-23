@@ -4,6 +4,7 @@ use crate::tensor::dims::{Dim0, Dim1, Dim2, Dim3, Dims};
 use crate::tensor::ITensor;
 use std::slice::{Iter, IterMut};
 
+#[derive(Clone)]
 pub struct TensorView<'a, T: 'a, D: Dims> {
     data: &'a [T],
     dims: D,
@@ -84,6 +85,20 @@ impl<'a, T: 'a, D: Dims> IntoIterator for TensorView<'a, T, D> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.data.iter()
+    }
+}
+
+impl<'a, T: 'a, D: Dims> From<&'a Tensor<T, D>> for TensorView<'a, T, D> {
+    #[inline]
+    fn from(tensor: &'a Tensor<T, D>) -> Self {
+        tensor.view()
+    }
+}
+
+impl<'a, T: 'a, D: Dims> From<&'a mut Tensor<T, D>> for TensorView<'a, T, D> {
+    #[inline]
+    fn from(tensor: &'a mut Tensor<T, D>) -> Self {
+        tensor.view()
     }
 }
 

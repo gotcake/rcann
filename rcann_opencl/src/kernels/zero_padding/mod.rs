@@ -8,6 +8,7 @@ use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
 use opencl3::types::cl_uint;
 use rcann::tensor::{Dim2, ITensor};
+use crate::tensor::event_list::EventList;
 
 #[derive(Debug)]
 pub struct ZeroPaddingKernel {
@@ -45,13 +46,13 @@ impl ZeroPaddingKernel {
         };
         let n = next_multiple(buff_cols, constants::BLOCK_SIZE);
         exec.set_local_work_size(constants::BLOCK_SIZE).set_global_work_size(n);
-        exec.set_event_wait_list(tensor.get_deps().as_slice());
+        exec.set_event_wait_list(tensor.deps().as_slice());
 
         let kernel_evt = wrap_cl_error!(
             unsafe { exec.enqueue_nd_range(queue) },
             "Failed to enqueue zero_padding kernel"
         )?;
-        tensor.set_dep(kernel_evt);
+        tensor.set_deps(EventList::from_event(kernel_evt));
         Ok(())
     }
 }
