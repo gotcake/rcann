@@ -1,6 +1,6 @@
-use std::cmp::Ordering;
 use crate::dtype::DTypeFloat;
 use crate::tensor::{Dim2, ITensor, Tensor2, TensorBase, TensorBaseMut};
+use std::cmp::Ordering;
 
 pub fn compute_jacobian_matrix<T: DTypeFloat>(a: &[T], b: &mut Tensor2<T>) {
     let size = a.len();

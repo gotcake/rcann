@@ -1,16 +1,18 @@
+use num_traits::{Float, Num, NumAssignOps};
+use std::fmt::{Debug, Display};
 use std::ops::Neg;
-use num_traits::{Float, FloatConst, Num, NumAssignOps, NumCast, NumOps, One, PrimInt, Zero};
 
-
-pub unsafe trait DType: 'static + Sized + Copy + Num + NumAssignOps {
+pub unsafe trait DType: 'static + Sized + Copy + Num + NumAssignOps + Display + Debug {
     const ZERO: Self;
     const ONE: Self;
     fn from_f64(val: f64) -> Self;
     fn from_usize(val: usize) -> Self;
+    fn to_usize(&self) -> usize;
+    fn to_f64(&self) -> f64;
 }
 
 pub unsafe trait DTypeUInt: DType {}
-pub unsafe trait DTypeSInt: DType + Neg<Output=Self> {}
+pub unsafe trait DTypeSInt: DType + Neg<Output = Self> {}
 pub unsafe trait DTypeFloat: DType + Float {}
 
 macro_rules! impl_dtype {
@@ -25,6 +27,14 @@ macro_rules! impl_dtype {
             #[inline]
             fn from_usize(val: usize) -> Self {
                 val as $ty
+            }
+            #[inline]
+            fn to_f64(&self) -> f64 {
+                *self as f64
+            }
+            #[inline]
+            fn to_usize(&self) -> usize {
+                *self as usize
             }
         }
         $(
@@ -43,7 +53,3 @@ impl_dtype!(u16, 1, 0, DTypeUInt);
 impl_dtype!(u32, 1, 0, DTypeUInt);
 impl_dtype!(u64, 1, 0, DTypeUInt);
 impl_dtype!(usize, 1, 0, DTypeUInt);
-
-
-
-

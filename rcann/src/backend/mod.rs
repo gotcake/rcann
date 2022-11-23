@@ -1,7 +1,6 @@
-use crate::dtype::{DTypeFloat, DTypeSInt, DTypeUInt};
-use crate::tensor::{Dim1, Dim2, Dims, DimsMore, ITensor, Tensor, Tensor1, TensorBase, TensorBaseMut, TensorView};
+use crate::dtype::DTypeFloat;
+use crate::tensor::{Dim1, Dim2, Dims, DimsMore, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
 use std::fmt::Debug;
-use std::process::Output;
 
 mod cpu;
 
@@ -10,7 +9,9 @@ pub use cpu::*;
 pub trait TensorTyped {
     type Float: DTypeFloat;
     type Tensor<D: Dims>: ITensor<D>;
-    type TensorRef<'a, D: Dims>: ITensor<D> + Clone + From<&'a Self::Tensor<D>> where Self: 'a;
+    type TensorRef<'a, D: Dims>: ITensor<D> + Clone + From<&'a Self::Tensor<D>>
+    where
+        Self: 'a;
     type InputAdaptionBuff<D: Dims>;
     type OutputAdaptionBuff<D: Dims>;
 }
@@ -60,6 +61,8 @@ pub trait TensorOps: TensorTyped {
         buff: &'a mut Self::OutputAdaptionBuff<D>,
         output: &'a Self::Tensor<D>,
     ) -> &'a Tensor<Self::Float, D>;
+
+    fn debug_tensor<D: Dims>(&self, tensor: &Self::Tensor<D>);
 
     fn max_batch_size(&self) -> usize;
 }
@@ -121,15 +124,18 @@ pub trait BackendOther: TensorTyped {
     fn flush(&self);
     fn sync(&self);
 
-    fn accum_confusion_matrix_multiclass(&self, matrix: &mut Self::Tensor<Dim2>, output: &Self::Tensor<Dim2>, expected: Self::TensorRef<'_, Dim2>);
-
+    fn accum_confusion_matrix_multiclass(
+        &self,
+        matrix: &mut Self::Tensor<Dim2>,
+        output: &Self::Tensor<Dim2>,
+        expected: Self::TensorRef<'_, Dim2>,
+    );
 }
 
 pub trait Backend: 'static + Debug + TensorTyped + TensorOps + MatrixMultiplication + BackendOther {}
 
-
 pub trait PreparedDataset {
     type Batch;
-    type Iter: Iterator<Item=Self::Batch>;
+    type Iter: Iterator<Item = Self::Batch>;
     fn iter_batches(&self) -> Self::Iter;
 }

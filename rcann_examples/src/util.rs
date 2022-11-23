@@ -1,8 +1,6 @@
 use mnist::{Mnist, MnistBuilder};
 use rcann::dtype::DTypeFloat;
 use rcann::tensor::{Dim2, Tensor2};
-use std::cmp::Ordering;
-use std::iter::zip;
 
 const IMAGE_PIXELS: usize = 28 * 28;
 const NUM_CLASSES: usize = 10;
@@ -36,20 +34,19 @@ pub fn load_mnist_data<D: DTypeFloat>(train_samples: usize, test_samples: usize)
     MnistData {
         train_images: Tensor2::from_vec(
             trn_img.into_iter().map(|p| D::from_f64(p as f64 / 256.0)).collect(),
-            Dim2(train_samples, IMAGE_PIXELS)
+            Dim2(train_samples, IMAGE_PIXELS),
         ),
         train_labels: Tensor2::from_vec(
             trn_lbl.into_iter().map(|l| D::from_usize(l as usize)).collect(),
-            Dim2(train_samples, NUM_CLASSES)
+            Dim2(train_samples, NUM_CLASSES),
         ),
         test_images: Tensor2::from_vec(
             tst_img.into_iter().map(|p| D::from_f64(p as f64 / 256.0)).collect(),
-            Dim2(test_samples, IMAGE_PIXELS)
+            Dim2(test_samples, IMAGE_PIXELS),
         ),
         test_labels: Tensor2::from_vec(
             tst_lbl.into_iter().map(|l| D::from_usize(l as usize)).collect(),
-            Dim2(test_samples, NUM_CLASSES)
+            Dim2(test_samples, NUM_CLASSES),
         ),
     }
 }
-

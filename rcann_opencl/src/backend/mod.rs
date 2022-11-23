@@ -4,9 +4,10 @@ mod other;
 use crate::kernels::gemm::GemmKernel;
 use crate::kernels::general::GeneralKernels;
 use crate::kernels::mse::MSEKernel;
+use crate::kernels::scoring::ScoringKernels;
 use crate::kernels::transpose::TransposeKernel;
 use crate::kernels::zero_padding::ZeroPaddingKernel;
-use crate::tensor::{OclTensor, OclTensorRef};
+use crate::tensor::OclTensor;
 use crate::util::{self, Result};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
@@ -28,6 +29,7 @@ pub struct OpenCLBackend {
     zero_padding_kernel: ZeroPaddingKernel,
     general_kernels: GeneralKernels,
     mse_kernel: MSEKernel,
+    scoring_kernels: ScoringKernels,
 }
 
 impl OpenCLBackend {
@@ -43,6 +45,7 @@ impl OpenCLBackend {
         let zero_padding_kernel = ZeroPaddingKernel::create(&context)?;
         let general_kernels = GeneralKernels::new(&context)?;
         let mse_kernel = MSEKernel::new(&context)?;
+        let scoring_kernels = ScoringKernels::create(&context)?;
         Ok(OpenCLBackend {
             device,
             context,
@@ -53,6 +56,7 @@ impl OpenCLBackend {
             zero_padding_kernel,
             general_kernels,
             mse_kernel,
+            scoring_kernels,
         })
     }
     #[inline]
@@ -132,6 +136,16 @@ impl TensorOps for OpenCLBackend {
         buff.resize_within_capacity(0.0, *output.dims());
         output.read_sync(&self.queue, buff).unwrap();
         buff
+    }
+
+    fn debug_tensor<D: Dims>(&self, tensor: &OclTensor<f32, D>) {
+        let native_full = tensor.as_native_full_buffer(&self.queue).unwrap();
+        println!(
+            "{native_full:?} data_dims={} buffer_len={} capacity={}",
+            tensor.dims(),
+            tensor.buffer_len(),
+            tensor.capacity()
+        );
     }
 
     #[inline]

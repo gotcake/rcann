@@ -1,34 +1,33 @@
 pub mod event_list;
 
-use std::borrow::Borrow;
-use crate::error::Error;
 use crate::kernels;
+use crate::tensor::event_list::EventList;
 use crate::util::{next_multiple, Result};
 use crate::{util, wrap_cl_error};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
-use opencl3::event::Event;
 use opencl3::memory::{Buffer, CL_MEM_READ_WRITE};
-use opencl3::types::{cl_double, cl_event, cl_float, CL_BLOCKING};
-use rcann::dtype::DTypeFloat;
-use rcann::tensor::{Dim1, Dim2, Dims, DimsZero, ITensor, Tensor, Tensor2, TensorBase, TensorBaseMut, TensorView};
-use std::cell::{Cell, Ref, RefCell};
+use opencl3::types::{cl_double, cl_float, cl_uint, CL_BLOCKING};
+use rcann::dtype::DType;
+use rcann::tensor::{Dim1, Dim2, Dims, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
+use std::cell::{Ref, RefCell};
 use std::ffi::c_void;
 use std::mem;
 use std::ops::Deref;
 use std::ptr;
-use std::rc::Rc;
-use crate::tensor::event_list::EventList;
 
-pub unsafe trait OclDType: DTypeFloat {}
+pub unsafe trait OclDType: DType {}
 unsafe impl OclDType for cl_float {}
 unsafe impl OclDType for cl_double {}
+unsafe impl OclDType for cl_uint {}
 
 pub const BLOCK_SIZE: usize = util::max_usize(
-    kernels::gemm::constants::TILE_SIZE,
-    kernels::transpose::constants::BLOCK_SIZE,
+    kernels::general::constants::UNIT_WIDTH,
+    util::max_usize(
+        kernels::gemm::constants::TILE_SIZE,
+        kernels::transpose::constants::BLOCK_SIZE,
+    ),
 );
-
 
 pub struct OclTensor<T: OclDType, D: Dims> {
     buffer: Buffer<T>,
@@ -94,7 +93,15 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
         let fill_event = {
             let deps = self.deps.borrow();
             wrap_cl_error!(
-                unsafe { queue.enqueue_fill_buffer(&mut self.buffer, &[value], 0, self.capacity, deps.as_slice()) },
+                unsafe {
+                    queue.enqueue_fill_buffer(
+                        &mut self.buffer,
+                        &[value],
+                        0,
+                        self.capacity * mem::size_of::<T>(),
+                        deps.as_slice(),
+                    )
+                },
                 "Failed to enqueue fill buffer"
             )?
         };
@@ -135,6 +142,11 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
     #[inline]
     pub fn buffer_len(&self) -> usize {
         self.buffer_dims.tensor_len()
+    }
+
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.capacity
     }
 
     pub fn sync(&self) {
@@ -251,6 +263,24 @@ impl<T: OclDType, D: Dims> OclTensor<T, D> {
     pub fn as_native(&self, queue: &CommandQueue) -> Result<Tensor<T, D>> {
         let mut native = Tensor::zeroed(self.dims);
         self.read_sync(queue, &mut native)?;
+        Ok(native)
+    }
+
+    pub fn as_native_full_buffer(&self, queue: &CommandQueue) -> Result<Tensor<T, D>> {
+        let mut native = Tensor::zeroed(self.buffer_dims);
+        wrap_cl_error!(
+            unsafe {
+                queue.enqueue_read_buffer(
+                    &self.buffer,
+                    CL_BLOCKING,
+                    0,
+                    native.as_mut(),
+                    self.deps.borrow().as_slice(),
+                )
+            },
+            "Failed to enqueue read buffer"
+        )?;
+        self.clear_deps();
         Ok(native)
     }
 }

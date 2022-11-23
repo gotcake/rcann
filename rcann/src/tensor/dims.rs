@@ -103,7 +103,7 @@ unsafe impl Dims for Dim0 {
         Dim3(1, 1, 1)
     }
     #[inline]
-    fn get_compact_offset(&self, index: &Self::Array) -> usize {
+    fn get_compact_offset(&self, _index: &Self::Array) -> usize {
         0
     }
 }

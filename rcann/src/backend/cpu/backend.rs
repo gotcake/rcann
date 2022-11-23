@@ -1,12 +1,14 @@
 use super::math::{compute_jacobian_matrix, DTypeOps};
+use crate::backend::cpu::math::argmax;
 use crate::backend::{Backend, BackendOther, MatrixMultiplication, TensorOps, TensorTyped};
-use crate::tensor::{Dim2, Dims, DimsMore, DimsZero, ITensor, Tensor, Tensor1, Tensor2, TensorBase, TensorBaseMut, TensorView, TensorView2};
+use crate::tensor::{
+    Dim2, Dims, DimsMore, ITensor, Tensor, Tensor1, Tensor2, TensorBase, TensorBaseMut, TensorView, TensorView2,
+};
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter, Write};
 use std::iter::zip;
 use std::ops::{Deref, DerefMut};
-use crate::backend::cpu::math::argmax;
 
 pub struct CpuBackend<DT: DTypeOps> {
     max_batch_size: usize,
@@ -86,6 +88,10 @@ impl<DT: DTypeOps> TensorOps for CpuBackend<DT> {
         output
     }
 
+    fn debug_tensor<D: Dims>(&self, tensor: &Self::Tensor<D>) {
+        println!("{tensor:?}");
+    }
+
     #[inline]
     fn max_batch_size(&self) -> usize {
         self.max_batch_size
@@ -94,7 +100,16 @@ impl<DT: DTypeOps> TensorOps for CpuBackend<DT> {
 
 impl<DT: DTypeOps> MatrixMultiplication for CpuBackend<DT> {
     #[inline]
-    fn matmul(&self, alpha: DT, a: TensorView2<DT>, ta: bool, b: TensorView2<DT>, tb: bool, beta: DT, c: &mut Tensor2<DT>) {
+    fn matmul(
+        &self,
+        alpha: DT,
+        a: TensorView2<DT>,
+        ta: bool,
+        b: TensorView2<DT>,
+        tb: bool,
+        beta: DT,
+        c: &mut Tensor2<DT>,
+    ) {
         DT::matrix_multiply(alpha, &a, ta, &b, tb, beta, c);
     }
 }
@@ -235,7 +250,12 @@ impl<DT: DTypeOps> BackendOther for CpuBackend<DT> {
     #[inline]
     fn sync(&self) {}
 
-    fn accum_confusion_matrix_multiclass(&self, matrix: &mut Tensor2<DT>, output: &Tensor2<DT>, expected: TensorView2<DT>) {
+    fn accum_confusion_matrix_multiclass(
+        &self,
+        matrix: &mut Tensor2<DT>,
+        output: &Tensor2<DT>,
+        expected: TensorView2<DT>,
+    ) {
         for (output_row, expected_row) in zip(output.iter_major_axis(), expected.iter_major_axis()) {
             let out_idx = argmax(output_row.as_ref());
             let expected_idx = argmax(expected_row.as_ref());

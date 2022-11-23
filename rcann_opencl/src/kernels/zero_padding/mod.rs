@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::tensor::event_list::EventList;
 use crate::tensor::OclTensor;
 use crate::util::{self, next_multiple, Result};
 use crate::wrap_cl_error;
@@ -8,7 +8,6 @@ use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
 use opencl3::types::cl_uint;
 use rcann::tensor::{Dim2, ITensor};
-use crate::tensor::event_list::EventList;
 
 #[derive(Debug)]
 pub struct ZeroPaddingKernel {

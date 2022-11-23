@@ -1,6 +1,6 @@
 use crate::activation::ActivationFn;
 use crate::backend::Backend;
-use crate::dtype::{DType, DTypeFloat};
+use crate::dtype::DType;
 use crate::net::layer::{ConcreteLayerParams, Layer, LayerParams, LayerType, NetInitializer};
 use crate::tensor::{Dim1, Dim2, ITensor, Tensor1, Tensor2};
 use std::fmt::{Debug, Formatter};

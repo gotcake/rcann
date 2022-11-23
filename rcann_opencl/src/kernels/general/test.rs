@@ -60,7 +60,7 @@ fn test_add_assign() -> Result<()> {
     let cpu = CpuBackend::<f32>::new(0);
     let mut rng = StdRng::seed_from_u64(0x3827261);
 
-    let input = Tensor2::from_distribution(&mut rng, StandardNormal, Dim2(30, 30));
+    let input = Tensor2::from_distribution(&mut rng, StandardNormal, Dim2(10, 10));
     let output = Tensor2::from_distribution(&mut rng, StandardNormal, *input.dims());
     let mut expected = output.clone();
     cpu.add_assign(0.75, &input, 0.25, &mut expected);

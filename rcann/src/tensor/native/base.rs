@@ -1,8 +1,11 @@
+use crate::tensor::{
+    Dim1, Dims, ITensor, Tensor, TensorChunkIter, TensorChunkIterMut, TensorIter, TensorIterMut, TensorView,
+    TensorView1, TensorViewMut, TensorViewMut1,
+};
 use std::ops::{Index, IndexMut};
-use crate::tensor::{Dim1, Dims, DimsMore, ITensor, Tensor, TensorChunkIter, TensorChunkIterMut, TensorIter, TensorIterMut, TensorView, TensorView1, TensorViewMut, TensorViewMut1};
 use std::slice::{Iter, IterMut};
 
-pub trait TensorBase<T, D: Dims>: ITensor<D> + AsRef<[T]> + Index<usize, Output=T> {
+pub trait TensorBase<T, D: Dims>: ITensor<D> + AsRef<[T]> + Index<usize, Output = T> {
     fn is_owned(&self) -> bool;
     fn into_owned(self) -> Tensor<T, D>
     where
@@ -36,7 +39,7 @@ pub trait TensorBase<T, D: Dims>: ITensor<D> + AsRef<[T]> + Index<usize, Output=
     }
 }
 
-pub trait TensorBaseMut<T, D: Dims>: TensorBase<T, D> + AsMut<[T]> + IndexMut<usize, Output=T> {
+pub trait TensorBaseMut<T, D: Dims>: TensorBase<T, D> + AsMut<[T]> + IndexMut<usize, Output = T> {
     #[inline]
     fn view_mut(&mut self) -> TensorViewMut<T, D> {
         let dims = self.dims().clone();

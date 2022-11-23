@@ -3,14 +3,15 @@ extern crate bencher;
 
 use bencher::Bencher;
 use rcann::backend::{CpuBackend, MatrixMultiplication};
+use rcann::tensor::TensorBase;
 use rcann::util::bench::*;
 
 macro_rules! impl_bench {
     ($name:ident, $ty:ty, $factory:ident, $size:expr, $alpha:literal, $ta:literal, $tb:literal, $beta:literal) => {
         fn $name(bench: &mut Bencher) {
-            let backend = CpuBackend::<$ty>::new();
+            let backend = CpuBackend::<$ty>::new(0);
             let [a, b, mut c] = $factory($size);
-            bench.iter(|| backend.matmul($alpha, &a, $ta, &b, $tb, $beta, &mut c))
+            bench.iter(|| backend.matmul($alpha, a.view(), $ta, b.view(), $tb, $beta, &mut c))
         }
     };
 }

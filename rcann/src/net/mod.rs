@@ -1,14 +1,14 @@
 use crate::backend::Backend;
+use crate::dtype::DType;
 use crate::loss::LossFn;
 use crate::net::initializer::{NetInitializer, RandomNetInitializer};
 use crate::net::layer::{ConcreteLayer, ConcreteLayerParams, Layer, LayerParams};
-use crate::tensor::{Dim0, Dim1, Dim2, Dims, ITensor, Tensor, Tensor1, Tensor2, Tensor3, TensorBase, TensorView, TensorView2};
+use crate::scoring::{NoOpScorer, Scorer};
+use crate::tensor::{Dim0, Dim1, Dim2, ITensor, Tensor1, Tensor2, TensorBase, TensorView2};
+use rand::seq::SliceRandom;
+use rand::Rng;
 use std::fmt::{Debug, Formatter};
 use std::iter::zip;
-use rand::Rng;
-use rand::seq::SliceRandom;
-use crate::dtype::{DType, DTypeFloat};
-use crate::scoring::{NoOpScorer, Scorer};
 
 pub mod initializer;
 pub mod layer;
@@ -72,7 +72,8 @@ impl<B: Backend> RawNet<B> {
         }
 
         self.backend.resize_tensor_major(&mut self.last_output, num_rows);
-        self.last.forward(&self.backend, B::TensorRef::from(input), &mut self.last_output);
+        self.last
+            .forward(&self.backend, B::TensorRef::from(input), &mut self.last_output);
     }
 
     fn backprop(
@@ -83,7 +84,7 @@ impl<B: Backend> RawNet<B> {
         learn_rate: B::Float,
         momentum: B::Float,
     ) {
-        let num_rows= input.dims().rows();
+        let num_rows = input.dims().rows();
         self.backend.resize_tensor(&mut self.output_error_buff, Dim1(num_rows));
         self.backend
             .resize_tensor_major(&mut self.output_error_deriv_buff, num_rows);
@@ -293,8 +294,7 @@ impl<B: Backend> Net<B> {
         let expected = self.raw.backend.adapt_input(&mut self.expected_buff, expected);
 
         self.raw.forward(input.clone());
-        self.raw
-            .backprop(input, expected, &loss, learn_rate, momentum);
+        self.raw.backprop(input, expected, &loss, learn_rate, momentum);
 
         let output = self
             .raw
@@ -307,7 +307,6 @@ impl<B: Backend> Net<B> {
 
         TrainBatchResult { output, error }
     }
-
 
     fn train_epoch<S: Scorer<B>>(
         &mut self,
@@ -340,30 +339,49 @@ impl<B: Backend> Net<B> {
     ) {
         let input_size = self.input_size();
         let output_size = self.output_size();
-        assert_eq!(input.dims().rows(), expected.dims().rows(), "Mismatched number of rows in input and expected");
-        assert_eq!(input.dims().cols(), self.input_size(), "Mismatched number of columns in input");
-        assert_eq!(expected.dims().cols(), self.output_size(), "Mismatched number of columns in expected");
+        assert_eq!(
+            input.dims().rows(),
+            expected.dims().rows(),
+            "Mismatched number of rows in input and expected"
+        );
+        assert_eq!(
+            input.dims().cols(),
+            self.input_size(),
+            "Mismatched number of columns in input"
+        );
+        assert_eq!(
+            expected.dims().cols(),
+            self.output_size(),
+            "Mismatched number of columns in expected"
+        );
         let batch_size = self.raw.backend.max_batch_size();
         let num_batches = (input.dims().rows() as f64 / batch_size as f64).ceil() as usize;
 
         // allocate buffers for the input and expected data
-        let mut buffers: Vec<_> = (0..num_batches).map(|_| {
-            (
-                self.raw.backend.new_input_adaption_buff(Dim1(input_size)),
-                self.raw.backend.new_input_adaption_buff(Dim1(output_size)),
-            )
-        }).collect();
+        let mut buffers: Vec<_> = (0..num_batches)
+            .map(|_| {
+                (
+                    self.raw.backend.new_input_adaption_buff(Dim1(input_size)),
+                    self.raw.backend.new_input_adaption_buff(Dim1(output_size)),
+                )
+            })
+            .collect();
 
         let mut batches = Vec::with_capacity(num_batches);
 
         // convert input to backend format
-        for ((input_batch, expected_batch), (input_buff, expected_buff)) in zip(zip(input.iter_major_axis_chunks(batch_size), expected.iter_major_axis_chunks(batch_size)), buffers.iter_mut()) {
+        for ((input_batch, expected_batch), (input_buff, expected_buff)) in zip(
+            zip(
+                input.iter_major_axis_chunks(batch_size),
+                expected.iter_major_axis_chunks(batch_size),
+            ),
+            buffers.iter_mut(),
+        ) {
             batches.push((
                 self.raw.backend.adapt_input(input_buff, input_batch),
                 self.raw.backend.adapt_input(expected_buff, expected_batch),
             ));
         }
-
 
         for i in 0..num_epochs {
             batches.shuffle(rng);
@@ -378,17 +396,32 @@ impl<B: Backend> Net<B> {
         }
     }
 
-    pub fn evaluate<S: Scorer<B>> (
+    pub fn evaluate<S: Scorer<B>>(
         &mut self,
         input: TensorView2<B::Float>,
         expected: TensorView2<B::Float>,
         scorer: &mut S,
     ) {
-        assert_eq!(input.dims().rows(), expected.dims().rows(), "Mismatched number of rows in inputs and expected");
-        assert_eq!(input.dims().cols(), self.input_size(), "Mismatched number of columns in inputs");
-        assert_eq!(expected.dims().cols(), self.output_size(), "Mismatched number of columns in expected");
+        assert_eq!(
+            input.dims().rows(),
+            expected.dims().rows(),
+            "Mismatched number of rows in inputs and expected"
+        );
+        assert_eq!(
+            input.dims().cols(),
+            self.input_size(),
+            "Mismatched number of columns in inputs"
+        );
+        assert_eq!(
+            expected.dims().cols(),
+            self.output_size(),
+            "Mismatched number of columns in expected"
+        );
         let batch_size = self.raw.backend.max_batch_size();
-        for (input_batch, expected_batch) in zip(input.iter_major_axis_chunks(batch_size), expected.iter_major_axis_chunks(batch_size)) {
+        for (input_batch, expected_batch) in zip(
+            input.iter_major_axis_chunks(batch_size),
+            expected.iter_major_axis_chunks(batch_size),
+        ) {
             let input_batch = self.raw.backend.adapt_input(&mut self.input_buff, input_batch);
             let expected_batch = self.raw.backend.adapt_input(&mut self.expected_buff, expected_batch);
             self.raw.forward(input_batch);
@@ -415,7 +448,6 @@ impl<B: Backend> Net<B> {
     pub fn max_batch_size(&self) -> usize {
         self.raw.backend.max_batch_size()
     }
-
 }
 
 impl<B: Backend> Debug for Net<B> {

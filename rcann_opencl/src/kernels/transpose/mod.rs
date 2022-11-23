@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod test;
 
-use crate::error::Error;
-use crate::tensor::{OclTensor, OclTensor2};
-use crate::util::{next_multiple, Result};
+use crate::tensor::event_list::EventList;
+use crate::tensor::OclTensor2;
+use crate::util::Result;
 use crate::{format_c_defines, util, wrap_cl_error};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
@@ -11,7 +11,6 @@ use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
 use opencl3::types::cl_uint;
 use rcann::tensor::{Dim2, ITensor};
-use crate::tensor::event_list::EventList;
 
 #[derive(Debug)]
 pub struct TransposeKernel {

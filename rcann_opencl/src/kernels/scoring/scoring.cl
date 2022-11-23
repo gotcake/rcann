@@ -1,15 +1,13 @@
-__kernel void accum_multiclass_confusion_matrix(
+__kernel void compute_confusion_matrix_indices(
         const uint ROWS,
         const uint N,
         const uint OUTPUT_ROW_STRIDE,
         const uint EXPECTED_ROW_STRIDE,
-        const uint MATRIX_ROW_STRIDE,
         const __global float* output,
         const __global float* expected,
-        __global uint* matrix
+        __global uint2* index_buffer
 ) {
     const uint row = get_global_id(0);
-
     if (row >= ROWS) {
         return;
     }
@@ -34,6 +32,26 @@ __kernel void accum_multiclass_confusion_matrix(
         }
     }
 
-    atomic_inc(matrix[max_expected_idx * MATRIX_ROW_STRIDE + max_output_idx])
+    index_buffer[row] = (uint2)(max_expected_idx, max_output_idx);
 
+}
+
+__kernel void inc_by_indices(
+        const uint NUM_INDICES,
+        const uint N,
+        const uint ROW_STRIDE,
+        const __global uint2* index_buffer,
+        __global float* matrix
+) {
+    const uint row = get_global_id(0);
+    if (row >= N) {
+        return;
+    }
+    const uint row_offset = row * ROW_STRIDE;
+    for (uint i = 0; i < NUM_INDICES; i++) {
+        uint2 index = index_buffer[i];
+        if (index.x == row) {
+            matrix[row_offset + index.y] += 1;
+        }
+    }
 }

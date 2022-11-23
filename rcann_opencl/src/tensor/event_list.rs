@@ -1,10 +1,10 @@
-use std::mem::ManuallyDrop;
-use std::{alloc, mem, ptr, slice};
-use std::alloc::Layout;
-use std::ops::Deref;
-use opencl3::event::{Event};
-use opencl3::types::cl_event;
 use crate::util::next_multiple;
+use opencl3::event::Event;
+use opencl3::types::cl_event;
+use std::alloc::Layout;
+use std::mem::ManuallyDrop;
+use std::ops::Deref;
+use std::{alloc, mem, ptr, slice};
 
 const INLINE_CAPACITY: usize = 4;
 const HEAP_CAPACITY_MULTIPLE: usize = 16;
@@ -21,7 +21,7 @@ impl HeapStorage {
         let capacity = required_capacity.max(HEAP_CAPACITY_MULTIPLE);
         HeapStorage {
             capacity,
-            ptr: unsafe { alloc_storage_ptr(capacity) }
+            ptr: unsafe { alloc_storage_ptr(capacity) },
         }
     }
     #[inline]
@@ -48,7 +48,7 @@ impl HeapStorage {
 union EventListStorage {
     uninit: (),
     array: [cl_event; INLINE_CAPACITY],
-    heap: HeapStorage
+    heap: HeapStorage,
 }
 
 impl EventListStorage {
@@ -59,7 +59,9 @@ impl EventListStorage {
     #[inline]
     fn single(event: cl_event) -> Self {
         let mut s = Self::uninit();
-        unsafe { *s.array.as_mut_ptr() = event; }
+        unsafe {
+            *s.array.as_mut_ptr() = event;
+        }
         s
     }
 }
@@ -106,16 +108,15 @@ unsafe fn alloc_storage_ptr(len: usize) -> *mut cl_event {
 
 pub struct EventList {
     len: usize,
-    storage: EventListStorage
+    storage: EventListStorage,
 }
 
 impl EventList {
-
     #[inline]
     pub fn empty() -> Self {
         EventList {
             len: 0,
-            storage: EventListStorage::uninit()
+            storage: EventListStorage::uninit(),
         }
     }
 
@@ -124,20 +125,26 @@ impl EventList {
         let event = ManuallyDrop::new(event);
         EventList {
             len: 1,
-            storage: EventListStorage::single(event.get())
+            storage: EventListStorage::single(event.get()),
         }
     }
 
     #[inline]
     pub fn from_event_raw(event: cl_event) -> Self {
-        unsafe { retain_event(event); }
+        unsafe {
+            retain_event(event);
+        }
         EventList {
             len: 1,
-            storage: EventListStorage::single(event)
+            storage: EventListStorage::single(event),
         }
     }
 
-    pub fn concat<L, T>(lists: L) -> Self where L: AsRef<[T]>, T: Deref<Target=EventList> {
+    pub fn concat<L, T>(lists: L) -> Self
+    where
+        L: AsRef<[T]>,
+        T: Deref<Target = EventList>,
+    {
         let lists = lists.as_ref();
         let total_len = lists.iter().map(|l| l.len).sum();
         let mut result = Self::empty();
@@ -189,7 +196,9 @@ impl EventList {
 
     pub fn clear(&mut self) {
         let cur_len = self.len;
-        if cur_len == 0 { return; }
+        if cur_len == 0 {
+            return;
+        }
         unsafe {
             if cur_len > INLINE_CAPACITY {
                 release_events(self.storage.heap.ptr, cur_len);
@@ -213,7 +222,9 @@ impl EventList {
 
     pub fn push(&mut self, event: Event) {
         let event = ManuallyDrop::new(event);
-        unsafe { self.extend_impl(&event.get(), 1); }
+        unsafe {
+            self.extend_impl(&event.get(), 1);
+        }
     }
 
     pub fn push_raw(&mut self, event: cl_event) {
@@ -259,11 +270,8 @@ impl EventList {
 
     #[inline]
     pub fn as_slice(&self) -> &[cl_event] {
-        unsafe {
-            slice::from_raw_parts(self.as_ptr(), self.len)
-        }
+        unsafe { slice::from_raw_parts(self.as_ptr(), self.len) }
     }
-
 }
 
 impl Drop for EventList {

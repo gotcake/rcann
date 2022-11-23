@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod test;
 
+use crate::tensor::event_list::EventList;
 use crate::tensor::{OclTensor, OclTensor1, OclTensor2};
 use crate::{
     format_c_defines,
@@ -13,7 +14,6 @@ use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
 use opencl3::types::cl_uint;
 use rcann::tensor::{Dim2, Dims, ITensor};
-use crate::tensor::event_list::EventList;
 
 #[derive(Debug)]
 pub struct GeneralKernels {
@@ -26,15 +26,21 @@ pub struct GeneralKernels {
 }
 
 pub mod constants {
-    pub const BLOCK_SIZE: usize = 16;
-    pub const PER_THREAD: usize = 4;
+    pub const VECTOR_PER_THREAD: usize = 1;
+    pub const VECTOR_WIDTH: usize = 16;
+    pub const UNIT_WIDTH: usize = VECTOR_WIDTH * VECTOR_PER_THREAD;
+    pub const FLOAT_BITS: usize = 32;
 }
 
 impl GeneralKernels {
     pub fn new(context: &Context) -> Result<Self> {
         let mut code = format_c_defines!(
-            "PER_THREAD" => constants::PER_THREAD,
+            "VECTOR_PER_THREAD" => constants::VECTOR_PER_THREAD,
+            "VECTOR_WIDTH" => constants::VECTOR_WIDTH,
+            "FLOAT_BITS" => constants::FLOAT_BITS,
         );
+        code.push_str(include_str!("../types.cl"));
+        code.push_str("\n");
         code.push_str(include_str!("general.cl"));
         let program = util::create_program(context, code.as_ref(), "")?;
         let sigmoid = util::create_kernel(&program, "sigmoid")?;
@@ -58,13 +64,12 @@ impl GeneralKernels {
     ) -> Result<()> {
         assert_eq!(activation.buffer_dims(), output.buffer_dims());
         let n = activation.buffer_len();
-        assert_eq!(n % constants::BLOCK_SIZE, 0);
+        assert_eq!(n % constants::UNIT_WIDTH, 0);
         let mut exec = ExecuteKernel::new(&self.sigmoid);
         unsafe {
             exec.set_arg(activation.buffer()).set_arg(output.buffer());
         }
-        exec.set_local_work_size(constants::BLOCK_SIZE / constants::PER_THREAD)
-            .set_global_work_size(n / constants::PER_THREAD);
+        exec.set_global_work_size(n / constants::UNIT_WIDTH);
         exec.set_event_wait_list(activation.deps().as_slice());
         let kernel_evt = wrap_cl_error!(
             unsafe { exec.enqueue_nd_range(queue) },
@@ -84,15 +89,14 @@ impl GeneralKernels {
         assert_eq!(result.buffer_dims(), output.buffer_dims());
         assert_eq!(result.buffer_dims(), error.buffer_dims());
         let n = output.buffer_len();
-        assert_eq!(n % constants::BLOCK_SIZE, 0);
+        assert_eq!(n % constants::UNIT_WIDTH, 0);
         let mut exec = ExecuteKernel::new(&self.sigmoid_error);
         unsafe {
             exec.set_arg(output.buffer())
                 .set_arg(error.buffer())
                 .set_arg(result.buffer());
         }
-        exec.set_local_work_size(constants::BLOCK_SIZE / constants::PER_THREAD)
-            .set_global_work_size(n / constants::PER_THREAD);
+        exec.set_global_work_size(n / constants::UNIT_WIDTH);
         let deps = EventList::concat([output.deps(), error.deps()]);
         exec.set_event_wait_list(deps.as_slice());
         let kernel_evt = wrap_cl_error!(
@@ -113,7 +117,7 @@ impl GeneralKernels {
     ) -> Result<()> {
         assert_eq!(input.buffer_dims(), output.buffer_dims());
         let n = input.buffer_len();
-        assert_eq!(n % constants::BLOCK_SIZE, 0);
+        assert_eq!(n % constants::UNIT_WIDTH, 0);
         let mut exec = ExecuteKernel::new(&self.add_assign);
         unsafe {
             exec.set_arg(&alpha)
@@ -121,8 +125,7 @@ impl GeneralKernels {
                 .set_arg(input.buffer())
                 .set_arg(output.buffer());
         }
-        exec.set_local_work_size(constants::BLOCK_SIZE / constants::PER_THREAD)
-            .set_global_work_size(n / constants::PER_THREAD);
+        exec.set_global_work_size(n / constants::UNIT_WIDTH);
         let deps = EventList::concat([output.deps(), input.deps()]);
         exec.set_event_wait_list(deps.as_slice());
         let kernel_evt = wrap_cl_error!(
@@ -143,20 +146,19 @@ impl GeneralKernels {
     ) -> Result<()> {
         assert_eq!(input.buffer_dims().cols(), output.buffer_len());
         let n = output.buffer_len();
-        assert_eq!(n % constants::BLOCK_SIZE, 0);
+        assert_eq!(n % constants::VECTOR_WIDTH, 0);
         let mut exec = ExecuteKernel::new(&self.column_sum);
         let &Dim2(rows, cols) = input.dims();
         unsafe {
             exec.set_arg(&(rows as cl_uint))
                 .set_arg(&(cols as cl_uint))
-                .set_arg(&(input.buffer_dims().cols() as cl_uint))
+                .set_arg(&((n / constants::VECTOR_WIDTH) as cl_uint))
                 .set_arg(&alpha)
                 .set_arg(&beta)
                 .set_arg(input.buffer())
                 .set_arg(output.buffer());
         }
-        exec.set_local_work_size(constants::BLOCK_SIZE / constants::PER_THREAD)
-            .set_global_work_size(n / constants::PER_THREAD);
+        exec.set_global_work_size(n / constants::VECTOR_WIDTH);
         let deps = EventList::concat([output.deps(), input.deps()]);
         exec.set_event_wait_list(deps.as_slice());
         let kernel_evt = wrap_cl_error!(

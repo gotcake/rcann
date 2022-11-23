@@ -1,7 +1,7 @@
 use crate::backend::OpenCLBackend;
+use crate::wrap_cl_error;
 use rcann::backend::BackendOther;
 use rcann::tensor::{Dim1, Dim2, Dims};
-use crate::wrap_cl_error;
 
 impl BackendOther for OpenCLBackend {
     fn column_sum(&self, alpha: Self::Float, a: &Self::Tensor<Dim2>, beta: Self::Float, b: &mut Self::Tensor<Dim1>) {
@@ -74,7 +74,8 @@ impl BackendOther for OpenCLBackend {
         wrap_cl_error!(
             unsafe { self.queue.enqueue_barrier_with_wait_list(&[]) },
             "Error calling enqueue_barrier_with_wait_list"
-        ).unwrap();
+        )
+        .unwrap();
         wrap_cl_error!(self.queue.flush(), "Error flushing queue").unwrap();
     }
 
@@ -82,7 +83,14 @@ impl BackendOther for OpenCLBackend {
         wrap_cl_error!(self.queue.finish(), "Error finishing queue").unwrap()
     }
 
-    fn accum_confusion_matrix_multiclass(&self, matrix: &mut Self::Tensor<Dim2>, output: &Self::Tensor<Dim2>, expected: &Self::Tensor<Dim2>) {
-        todo!()
+    fn accum_confusion_matrix_multiclass(
+        &self,
+        matrix: &mut Self::Tensor<Dim2>,
+        output: &Self::Tensor<Dim2>,
+        expected: &Self::Tensor<Dim2>,
+    ) {
+        self.scoring_kernels
+            .accum_multiclass_confusion_matrix(&self.context, &self.queue, matrix, output, expected)
+            .unwrap();
     }
 }

@@ -1,5 +1,5 @@
 use crate::backend::Backend;
-use crate::dtype::{DType, DTypeFloat};
+use crate::dtype::DType;
 use crate::tensor::Dim2;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};

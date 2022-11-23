@@ -2,13 +2,11 @@ use crate::error::Error;
 use opencl3::command_queue::{CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE};
 use opencl3::context::Context;
 use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
-use opencl3::event::{Event, retain_event};
 use opencl3::kernel::Kernel;
 use opencl3::program::Program;
 use opencl3::types::cl_event;
 use rcann::tensor::{Dim3, Dims};
 use std::mem;
-use std::rc::Rc;
 
 #[inline]
 pub const fn next_multiple(n: usize, of: usize) -> usize {
@@ -82,11 +80,6 @@ pub fn create_test_context() -> Result<TestContext> {
 pub fn get_rect_region<D: Dims, T: Sized>(dims: D) -> [usize; 3] {
     let Dim3(z, y, x) = dims.as_dim3();
     return [x * mem::size_of::<T>(), y, z];
-}
-
-#[inline]
-pub fn get_raw_events(events: &[Rc<Event>]) -> Vec<cl_event> {
-    events.iter().map(|e| e.get()).collect()
 }
 
 #[inline]

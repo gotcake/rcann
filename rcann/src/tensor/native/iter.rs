@@ -132,7 +132,7 @@ impl<'a, T: 'a, D: DimsMore> TensorChunkIter<'a, T, D> {
         Self {
             chunk_iter: slice.chunks(inner_len * size),
             inner_dim,
-            inner_len
+            inner_len,
         }
     }
 }
@@ -161,7 +161,7 @@ impl<'a, T: 'a, D: DimsMore> TensorChunkIterMut<'a, T, D> {
         Self {
             chunk_iter: slice.chunks_mut(inner_len * size),
             inner_dim,
-            inner_len
+            inner_len,
         }
     }
 }
@@ -179,7 +179,6 @@ impl<'a, T: 'a, D: DimsMore> Iterator for TensorChunkIterMut<'a, T, D> {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::tensor;
 
     #[test]

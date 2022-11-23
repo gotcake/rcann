@@ -16,15 +16,23 @@ fn test_gemm() -> Result<()> {
 
     let mut rng = StdRng::seed_from_u64(0x1234567);
 
-    let m = 50;
-    let k = 20;
-    let n = 30;
+    let m = 120;
+    let k = 40;
+    let n = 50;
 
     let a_native = Tensor::from_distribution(&mut rng, StandardNormal, Dim2(m, k));
     let b_native = Tensor::from_distribution(&mut rng, StandardNormal, Dim2(k, n));
     let mut c_expected = Tensor::zeroed(Dim2(m, n));
 
-    cpu_backend.matmul(1.0, a_native.view(), false, b_native.view(), false, 0.0, &mut c_expected);
+    cpu_backend.matmul(
+        1.0,
+        a_native.view(),
+        false,
+        b_native.view(),
+        false,
+        0.0,
+        &mut c_expected,
+    );
 
     let a_ocl = OclTensor::from_native(&context, &queue, &a_native)?;
     let b_ocl = OclTensor::from_native(&context, &queue, &b_native)?;

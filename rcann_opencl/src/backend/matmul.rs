@@ -2,7 +2,7 @@ use crate::backend::OpenCLBackend;
 use crate::tensor::OclTensor;
 use crate::util::panic_on_error;
 use rcann::backend::MatrixMultiplication;
-use rcann::dtype::{DType, DTypeFloat};
+use rcann::dtype::DType;
 use rcann::tensor::{Dim2, ITensor};
 
 impl MatrixMultiplication for OpenCLBackend {
@@ -78,7 +78,15 @@ mod test {
                 let c = Tensor2::<$ty>::from_distribution(&mut rng, StandardNormal, dim_c);
 
                 let mut c_expected = c.clone();
-                cpu.matmul($alpha as $ty, a.view(), $ta, b.view(), $tb, $beta as $ty, &mut c_expected);
+                cpu.matmul(
+                    $alpha as $ty,
+                    a.view(),
+                    $ta,
+                    b.view(),
+                    $tb,
+                    $beta as $ty,
+                    &mut c_expected,
+                );
 
                 let ocl_a = ocl.new_tensor_from_native(a);
                 let ocl_b = ocl.new_tensor_from_native(b);
