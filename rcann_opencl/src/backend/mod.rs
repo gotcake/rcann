@@ -8,7 +8,7 @@ use crate::kernels::scoring::ScoringKernels;
 use crate::kernels::transpose::TransposeKernel;
 use crate::kernels::zero_padding::ZeroPaddingKernel;
 use crate::tensor::OclTensor;
-use crate::util::{self, Result};
+use crate::util::{self, FixedWidth2DProgramArgs, Result, VecWidth};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::device::Device;
@@ -16,6 +16,7 @@ use opencl3::types::cl_float;
 use rcann::backend::{Backend, TensorOps, TensorTyped};
 use rcann::tensor::{Dims, DimsMore, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
 use std::fmt::Debug;
+use crate::kernels::softmax::Softmax;
 
 #[derive(Debug)]
 #[allow(unused)]
@@ -30,6 +31,7 @@ pub struct OpenCLBackend {
     general_kernels: GeneralKernels,
     mse_kernel: MSEKernel,
     scoring_kernels: ScoringKernels,
+    softmax_kernel: Softmax<f32>,
 }
 
 impl OpenCLBackend {
@@ -46,6 +48,7 @@ impl OpenCLBackend {
         let general_kernels = GeneralKernels::new(&context)?;
         let mse_kernel = MSEKernel::new(&context)?;
         let scoring_kernels = ScoringKernels::create(&context)?;
+        let softmax_kernel = Softmax::create(&context, VecWidth::SIXTEEN)?;
         Ok(OpenCLBackend {
             device,
             context,
@@ -57,6 +60,7 @@ impl OpenCLBackend {
             general_kernels,
             mse_kernel,
             scoring_kernels,
+            softmax_kernel,
         })
     }
     #[inline]

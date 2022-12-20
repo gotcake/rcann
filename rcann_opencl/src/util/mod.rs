@@ -1,3 +1,9 @@
+mod kernel_macros;
+mod cache;
+
+use std::collections::hash_map::DefaultHasher;
+use std::fmt::{Display, Formatter, Write};
+use std::hash::{Hash, Hasher};
 use crate::error::Error;
 use opencl3::command_queue::{CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE};
 use opencl3::context::Context;
@@ -7,9 +13,50 @@ use opencl3::program::Program;
 use opencl3::types::cl_event;
 use rcann::tensor::{Dim3, Dims};
 use std::mem;
+pub(crate) use kernel_macros::*;
+pub(crate) use cache::*;
+
+#[repr(u8)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy)]
+pub(crate) enum VecWidth {
+    ONE = 1,
+    TWO = 2,
+    FOUR = 4,
+    EIGHT = 8,
+    SIXTEEN = 16,
+}
+
+impl Display for VecWidth {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        (*self as u8).fmt(f)
+    }
+}
+
+impl TryFrom<u8> for VecWidth {
+    type Error = Error;
+    fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+        use VecWidth::*;
+        match value {
+            1 => Ok(ONE),
+            2 => Ok(TWO),
+            4 => Ok(FOUR),
+            8 => Ok(EIGHT),
+            16 => Ok(SIXTEEN),
+            _ => Err(Error::ConversionError(format!("Invalid vector width: {value}")))
+        }
+    }
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone)]
+pub(crate) struct FixedWidth2DProgramArgs {
+    pub vec_width: VecWidth,
+    pub cols: usize,
+    pub row_stride: usize,
+}
 
 #[inline]
-pub const fn next_multiple(n: usize, of: usize) -> usize {
+pub(crate) const fn next_multiple(n: usize, of: usize) -> usize {
     let rem = n % of;
     if rem == 0 {
         n
@@ -22,8 +69,12 @@ pub const fn next_multiple(n: usize, of: usize) -> usize {
 macro_rules! format_c_defines {
     ($($key:expr => $val:expr),* $(,)?) => {
         format!(concat!($("#define ", $key, " {}\n" ,)*), $( $val ,)*)
-    }
+    };
+    ($($key:ident = $val:expr),* $(,)?) => {
+        format!(concat!($("#define ", stringify!($key), " {}\n" ,)*), $( $val ,)*)
+    };
 }
+pub(crate) use format_c_defines;
 
 #[macro_export]
 macro_rules! wrap_cl_error {
@@ -33,6 +84,12 @@ macro_rules! wrap_cl_error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+pub fn hash_value<T: Hash>(value: T) -> u64 {
+    let mut h = DefaultHasher::new();
+    value.hash(&mut h);
+    h.finish()
+}
 
 pub fn get_default_device() -> Result<Device> {
     let device_id = *get_all_devices(CL_DEVICE_TYPE_GPU)
@@ -95,6 +152,7 @@ where
     f().unwrap()
 }
 
+#[inline]
 pub const fn max_usize(a: usize, b: usize) -> usize {
     if a < b {
         b

@@ -16,7 +16,7 @@ fn test_mean_squared_error() -> Result<()> {
     let kernel = MSEKernel::new(&context)?;
     let mut rng = StdRng::seed_from_u64(0x82379173);
 
-    let output_vals = Tensor2::from_distribution(&mut rng, StandardNormal, Dim2(72, 53));
+    let output_vals = Tensor2::from_distribution(&mut rng, StandardNormal, Dim2(90, 80));
     let expected_vals = Tensor2::from_distribution(&mut rng, StandardNormal, *output_vals.dims());
 
     let mut expected_result = Tensor1::zeroed(Dim1(output_vals.dims().rows()));

@@ -3,6 +3,7 @@ use crate::wrap_cl_error;
 use rcann::backend::BackendOther;
 use rcann::tensor::{Dim1, Dim2, Dims};
 
+#[allow(unused)]
 impl BackendOther for OpenCLBackend {
     fn column_sum(&self, alpha: Self::Float, a: &Self::Tensor<Dim2>, beta: Self::Float, b: &mut Self::Tensor<Dim1>) {
         self.general_kernels.column_sum(&self.queue, alpha, a, beta, b).unwrap();
@@ -45,7 +46,8 @@ impl BackendOther for OpenCLBackend {
     }
 
     fn softmax(&self, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>) {
-        todo!()
+        self.softmax_kernel
+            .softmax(&self.queue, activation, output)
     }
 
     fn softmax_error(

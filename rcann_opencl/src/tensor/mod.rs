@@ -8,7 +8,7 @@ use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::memory::{Buffer, CL_MEM_READ_WRITE};
 use opencl3::types::{cl_double, cl_float, cl_uint, CL_BLOCKING};
-use rcann::dtype::DType;
+use rcann::dtype::{DType, DTypeFloat};
 use rcann::tensor::{Dim1, Dim2, Dims, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
 use std::cell::{Ref, RefCell};
 use std::ffi::c_void;
@@ -20,6 +20,10 @@ pub unsafe trait OclDType: DType {}
 unsafe impl OclDType for cl_float {}
 unsafe impl OclDType for cl_double {}
 unsafe impl OclDType for cl_uint {}
+
+pub unsafe trait OclFloat: OclDType + DTypeFloat {}
+unsafe impl OclFloat for cl_float {}
+unsafe impl OclFloat for cl_double {}
 
 pub const BLOCK_SIZE: usize = util::max_usize(
     kernels::general::constants::UNIT_WIDTH,

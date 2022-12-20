@@ -11,6 +11,8 @@ pub enum Error {
     CreateProgramError(String),
     TensorResizeError(String),
     NoDevicesFound,
+    ValidationError(String),
+    ConversionError(String),
 }
 
 impl Error {
