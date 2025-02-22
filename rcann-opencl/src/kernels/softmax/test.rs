@@ -23,7 +23,7 @@ fn test_softmax() {
 
     let kernel = Softmax::create(
         &context,
-        16,
+        VecWidth::SIXTEEN,
         activation.dims().cols(),
         activation_ocl.buffer_dims().cols(),
     )

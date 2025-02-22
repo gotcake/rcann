@@ -18,7 +18,7 @@ use std::mem;
 
 #[repr(u8)]
 #[derive(Debug, Hash, Eq, PartialEq, Clone, Copy)]
-pub(crate) enum VecWidth {
+pub enum VecWidth {
     ONE = 1,
     TWO = 2,
     FOUR = 4,
@@ -48,18 +48,22 @@ impl TryFrom<u8> for VecWidth {
     }
 }
 
-#[derive(Debug, Hash, Eq, PartialEq, Clone)]
-pub(crate) struct FixedWidth2DProgramArgs {
-    pub vec_width: VecWidth,
-    pub cols: usize,
-    pub row_stride: usize,
-}
-
-pub(crate) fn is_valid_vec_width(value: u8) -> bool {
-    match value {
+pub(crate) fn is_valid_vec_width(usize: u8) -> bool {
+    match usize {
         1 | 2 | 4 | 8 | 16 => true,
         _ => false,
     }
+}
+
+
+pub(crate) fn is_power_of_two(value: usize) -> bool {
+    value != 0 && (value & (value - 1)) == 0
+}
+
+const MIN_BLOCK_SIZE: usize = 4;
+const MAX_BLOCK_SIZE: usize = 64;
+pub(crate) fn is_valid_block_size(value: usize) -> bool {
+    value >= MIN_BLOCK_SIZE && value <= MAX_BLOCK_SIZE && is_power_of_two(value)
 }
 
 #[inline]

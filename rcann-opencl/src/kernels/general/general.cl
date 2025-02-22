@@ -23,8 +23,8 @@ __kernel void sigmoid_error(
 }
 
 __kernel void add_assign(
-        const float alpha,
-        const float beta,
+        const real alpha,
+        const real beta,
         const __global realX* input,
         __global realX* output
 ) {
@@ -39,8 +39,8 @@ __kernel void column_sum(
         const uint ROWS,
         const uint COLS,
         const uint ROW_STRIDE,
-        const float alpha,
-        const float beta,
+        const real alpha,
+        const real beta,
         const __global realX* input,
         __global realX* output
 ) {

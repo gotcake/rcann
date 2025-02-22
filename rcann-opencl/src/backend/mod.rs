@@ -1,15 +1,11 @@
 mod matmul;
 mod other;
 
-use crate::kernels::gemm::{GeMM, GemmKernel};
-use crate::kernels::general::GeneralKernels;
-use crate::kernels::mse::MSEKernel;
-use crate::kernels::scoring::ScoringKernels;
-use crate::kernels::softmax::Softmax;
-use crate::kernels::transpose::TransposeKernel;
-use crate::kernels::zero_padding::ZeroPaddingKernel;
-use crate::tensor::OclTensor;
-use crate::util::{self, FixedWidth2DProgramArgs, ProgramCache, Result, VecWidth};
+use crate::kernels::gemm::GeMMProgram;
+use crate::kernels::scoring::{ScoringKernels, ScoringProgram};
+use crate::kernels::transpose::TransposeProgram;
+use crate::tensor::{OclFloat, OclTensor};
+use crate::util::{self, ProgramCache, Result, VecWidth};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::device::Device;
@@ -17,51 +13,52 @@ use opencl3::types::cl_float;
 use rcann::backend::{Backend, TensorOps, TensorTyped};
 use rcann::tensor::{Dims, DimsMore, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
 use std::fmt::Debug;
+use crate::kernels::BUFFER_BLOCK_SIZE;
+use crate::kernels::general::GeneralProgram;
+use crate::kernels::zero_padding::ZeroPadProgram;
 
 #[derive(Debug)]
 #[allow(unused)]
-pub struct OpenCLBackend {
+pub struct OpenCLBackend<F: OclFloat> {
     device: Device,
     context: Context,
     queue: CommandQueue,
     cache: ProgramCache,
     max_batch_size: usize,
-    gemm_kernel: GemmKernel,
-    gemm_kernel2: GeMM<f32>,
-    transpose_kernel: TransposeKernel,
-    zero_padding_kernel: ZeroPaddingKernel,
-    general_kernels: GeneralKernels,
-    scoring_kernels: ScoringKernels,
+    vec_width: VecWidth,
+    gemm_program: GeMMProgram<F>,
+    transpose_program: TransposeProgram<F>,
+    zero_pad_program: ZeroPadProgram<F>,
+    general_program: GeneralProgram<F>,
+    scoring_program: ScoringProgram<F>,
 }
 
-impl OpenCLBackend {
-    pub fn from_default_device(max_batch_size: usize) -> Result<Self> {
-        Self::from_device(util::get_default_device()?, max_batch_size)
+impl<F: OclFloat> OpenCLBackend<F> {
+    pub fn from_default_device(max_batch_size: usize, vec_width: VecWidth) -> Result<Self> {
+        Self::from_device(util::get_default_device()?, max_batch_size, vec_width)
     }
 
-    pub fn from_device(device: Device, max_batch_size: usize) -> Result<Self> {
+    pub fn from_device(device: Device, max_batch_size: usize, vec_width: VecWidth) -> Result<Self> {
         let context = util::get_context(&device)?;
         let queue = util::create_queue(&context)?;
-        let gemm_kernel = GemmKernel::new(&context)?;
-        let gemm_kernel2 = GeMM::create(&context, 16, 16)?;
-        let transpose_kernel = TransposeKernel::create(&context)?;
-        let zero_padding_kernel = ZeroPaddingKernel::create(&context)?;
-        let general_kernels = GeneralKernels::new(&context)?;
-        let mse_kernel = MSEKernel::new(&context)?;
-        let scoring_kernels = ScoringKernels::create(&context)?;
+        let gemm_program = GeMMProgram::create(&context, vec_width, BUFFER_BLOCK_SIZE)?;
+        let transpose_program = TransposeProgram::create(&context, BUFFER_BLOCK_SIZE)?;
+        let zero_pad_program = ZeroPadProgram::create(&context, BUFFER_BLOCK_SIZE)?;
+        let general_program = GeneralProgram::create(&context, vec_width, BUFFER_BLOCK_SIZE / vec_width as usize)?;
+        let scoring_program = ScoringProgram::create(&context)?;
         let cache = ProgramCache::new();
         Ok(OpenCLBackend {
             device,
             context,
             queue,
             max_batch_size,
-            gemm_kernel,
-            gemm_kernel2,
-            transpose_kernel,
-            zero_padding_kernel,
-            general_kernels,
+            vec_width,
+            gemm_program,
+            transpose_program,
+            zero_pad_program,
+            general_program,
             cache,
-            scoring_kernels,
+            scoring_program,
         })
     }
     #[inline]
@@ -78,15 +75,15 @@ impl OpenCLBackend {
     }
 }
 
-impl TensorTyped for OpenCLBackend {
-    type Float = cl_float;
-    type TensorRef<'a, D: Dims> = &'a OclTensor<cl_float, D>;
-    type Tensor<D: Dims> = OclTensor<cl_float, D>;
-    type InputAdaptionBuff<D: Dims> = OclTensor<cl_float, D>;
-    type OutputAdaptionBuff<D: Dims> = Tensor<Self::Float, D>;
+impl<F: OclFloat> TensorTyped for OpenCLBackend<F> {
+    type Float = F;
+    type Tensor<D: Dims> = OclTensor<F, D>;
+    type TensorRef<'a, D: Dims> = &'a OclTensor<F, D>;
+    type InputAdaptionBuff<D: Dims> = OclTensor<F, D>;
+    type OutputAdaptionBuff<D: Dims> = Tensor<F, D>;
 }
 
-impl TensorOps for OpenCLBackend {
+impl<F: OclFloat> TensorOps for OpenCLBackend<F> {
     fn new_tensor_exact<D: Dims>(&self, dim: D) -> Self::Tensor<D> {
         OclTensor::zeroed(&self.context, &self.queue, dim).unwrap()
     }
@@ -115,19 +112,19 @@ impl TensorOps for OpenCLBackend {
         tensor.read_sync(&self.queue, native_dst).unwrap();
     }
 
-    fn new_input_adaption_buff<D: DimsMore>(&self, inner_dims: D) -> OclTensor<f32, D::More> {
+    fn new_input_adaption_buff<D: DimsMore>(&self, inner_dims: D) -> OclTensor<F, D::More> {
         OclTensor::zeroed(&self.context, &self.queue, inner_dims.insert_major(self.max_batch_size)).unwrap()
     }
 
-    fn new_output_adaption_buff<D: DimsMore>(&self, inner_dims: D) -> Tensor<f32, D::More> {
+    fn new_output_adaption_buff<D: DimsMore>(&self, inner_dims: D) -> Tensor<F, D::More> {
         Tensor::zeroed(inner_dims.insert_major(self.max_batch_size))
     }
 
     fn adapt_input<'a, D: Dims>(
         &self,
-        buff: &'a mut OclTensor<f32, D>,
-        input: TensorView<Self::Float, D>,
-    ) -> &'a OclTensor<f32, D> {
+        buff: &'a mut OclTensor<F, D>,
+        input: TensorView<F, D>,
+    ) -> &'a OclTensor<F, D> {
         buff.resize_within_capacity(*input.dims());
         buff.write_sync(&self.queue, &input).unwrap();
         buff
@@ -135,15 +132,15 @@ impl TensorOps for OpenCLBackend {
 
     fn adapt_output<'a, D: Dims>(
         &self,
-        buff: &'a mut Tensor<Self::Float, D>,
-        output: &'a OclTensor<f32, D>,
-    ) -> &'a Tensor<Self::Float, D> {
-        buff.resize_within_capacity(0.0, *output.dims());
+        buff: &'a mut Tensor<F, D>,
+        output: &'a OclTensor<F, D>,
+    ) -> &'a Tensor<F, D> {
+        buff.resize_within_capacity(F::ZERO, *output.dims());
         output.read_sync(&self.queue, buff).unwrap();
         buff
     }
 
-    fn debug_tensor<D: Dims>(&self, tensor: &OclTensor<f32, D>) {
+    fn debug_tensor<D: Dims>(&self, tensor: &OclTensor<F, D>) {
         let native_full = tensor.as_native_full_buffer(&self.queue).unwrap();
         println!(
             "{native_full:?} data_dims={} buffer_len={} capacity={}",
@@ -159,4 +156,4 @@ impl TensorOps for OpenCLBackend {
     }
 }
 
-impl Backend for OpenCLBackend {}
+impl<F: OclFloat> Backend for OpenCLBackend<F> {}

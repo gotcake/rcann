@@ -1,42 +1,42 @@
 use crate::backend::OpenCLBackend;
-use crate::tensor::OclTensor;
+use crate::tensor::{OclFloat, OclTensor};
 use crate::util::panic_on_error;
 use rcann::backend::MatrixMultiplication;
 use rcann::dtype::DType;
 use rcann::tensor::{Dim2, ITensor};
 
-impl MatrixMultiplication for OpenCLBackend {
+impl<F: OclFloat> MatrixMultiplication for OpenCLBackend<F> {
     fn matmul(
         &self,
-        alpha: Self::Float,
+        alpha: F,
         a: &Self::Tensor<Dim2>,
         ta: bool,
         b: &Self::Tensor<Dim2>,
         tb: bool,
-        beta: Self::Float,
+        beta: F,
         c: &mut Self::Tensor<Dim2>,
     ) {
         panic_on_error(|| {
             let a_transpose = if ta {
                 let mut temp = unsafe { OclTensor::uninit(&self.context, a.dims().transposed())? };
-                self.transpose_kernel.transpose(&self.queue, a, &mut temp)?;
+                self.transpose_program.transpose(&self.queue, a, &mut temp);
                 Some(temp)
             } else {
-                self.zero_padding_kernel.zero_padding(&self.queue, a)?;
+                self.zero_pad_program.zero_padding(&self.queue, a);
                 None
             };
             let b_transpose = if tb {
                 let mut temp = unsafe { OclTensor::uninit(&self.context, b.dims().transposed())? };
-                self.transpose_kernel.transpose(&self.queue, b, &mut temp)?;
+                self.transpose_program.transpose(&self.queue, b, &mut temp);
                 Some(temp)
             } else {
-                self.zero_padding_kernel.zero_padding(&self.queue, b)?;
+                self.zero_pad_program.zero_padding(&self.queue, b);
                 None
             };
-            if beta != Self::Float::ZERO {
-                self.zero_padding_kernel.zero_padding(&self.queue, c)?;
+            if beta != F::ZERO {
+                self.zero_pad_program.zero_padding(&self.queue, c);
             }
-            self.gemm_kernel2.gemm(
+            self.gemm_program.gemm(
                 &self.queue,
                 alpha,
                 a_transpose.as_ref().unwrap_or(a),
@@ -44,14 +44,6 @@ impl MatrixMultiplication for OpenCLBackend {
                 beta,
                 c,
             );
-            /*self.gemm_kernel.gemm(
-                &self.queue,
-                alpha,
-                a_transpose.as_ref().unwrap_or(a),
-                b_transpose.as_ref().unwrap_or(b),
-                beta,
-                c,
-            )?;*/
             Ok(())
         });
     }
@@ -60,7 +52,7 @@ impl MatrixMultiplication for OpenCLBackend {
 #[cfg(test)]
 mod test {
     use crate::backend::OpenCLBackend;
-    use crate::util::Result;
+    use crate::util::{Result, VecWidth};
     use approx::assert_abs_diff_eq;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
@@ -75,7 +67,7 @@ mod test {
                 use rcann::tensor::TensorBase;
                 let mut rng = StdRng::seed_from_u64($seed);
                 let cpu = CpuBackend::<$ty>::new(0);
-                let ocl = OpenCLBackend::from_default_device(0)?;
+                let ocl = OpenCLBackend::<$ty>::from_default_device(0, VecWidth::SIXTEEN)?;
 
                 let dim_a = if $ta { Dim2($k, $m) } else { Dim2($m, $k) };
                 let dim_b = if $tb { Dim2($n, $k) } else { Dim2($k, $n) };

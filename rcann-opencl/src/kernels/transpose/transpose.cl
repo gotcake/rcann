@@ -2,8 +2,8 @@ __kernel void transpose(
         const uint ROWS, const uint COLS,
         const uint ROW_STRIDE_IN,
         const uint ROWS_OUT_BUFF, const uint COLS_OUT_BUFF,
-        const __global float* input,
-        __global float* output
+        const __global real* input,
+        __global real* output
 ) {
     // Thread identifiers
     const uint l_row = get_local_id(0);
@@ -12,7 +12,7 @@ __kernel void transpose(
     uint g_col = get_global_id(1);
 
     // set up the local memory for shuffling
-    __local float buffer[BLOCK_SIZE + 2][BLOCK_SIZE];
+    __local real buffer[BLOCK_SIZE + 2][BLOCK_SIZE];
 
     // Save the block to a local buffer (coalesced)
     if (g_row < ROWS && g_col < COLS) {

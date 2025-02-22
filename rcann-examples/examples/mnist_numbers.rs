@@ -1,7 +1,6 @@
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rcann::activation::ActivationFn;
-use rcann::backend::CpuBackend;
 use rcann::net::initializer::RandomNetInitializer;
 use rcann::net::layer::DenseLayerParams;
 use rcann::net::NetBuilder;
@@ -10,6 +9,7 @@ use rcann::tensor::TensorBase;
 use rcann_examples::util::{load_mnist_data, MnistData};
 use rcann_opencl::backend::OpenCLBackend;
 use std::time::Instant;
+use rcann_opencl::util::VecWidth;
 
 const MAX_BATCH_SIZE: usize = 64;
 
@@ -23,7 +23,7 @@ pub fn main() {
 
     let mut shuffle_rng = StdRng::seed_from_u64(0xf666);
 
-    let backend = OpenCLBackend::from_default_device(MAX_BATCH_SIZE).unwrap();
+    let backend = OpenCLBackend::from_default_device(MAX_BATCH_SIZE, VecWidth::SIXTEEN).unwrap();
     //let backend = CpuBackend::<f32>::new(MAX_BATCH_SIZE);
 
     let mut net = NetBuilder::new(backend, 784)

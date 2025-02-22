@@ -114,7 +114,6 @@ macro_rules! ocl_program {
         source = $source_file:literal,
         $(generic_args = <$( $gen_ident:ident : $gen_constraint:path ),+ $(,)?>,)?
         $(compile_params = ($( $compile_param_name:ident : $compile_param_ty:ty ),* $(,)?),)?
-        $(runtime_params = ($( $runtime_param_name:ident : $runtime_param_ty:ty ),* $(,)?),)?
         $(validation = $program_validation:block,)?
         $(defines = { $($defines:tt)* },)?
         kernels = { $( $kernel_name:ident { $($kernels_tt:tt)+ }, )+ },
@@ -125,7 +124,6 @@ macro_rules! ocl_program {
         pub(crate) struct $type_name$(<$( $gen_ident: $gen_constraint ),+>)? {
             program: std::rc::Rc<opencl3::program::Program>,
             $( $( $compile_param_name: $compile_param_ty, )* )?
-            $( $( $runtime_param_name: $runtime_param_ty, )* )?
             $( $kernel_name: opencl3::kernel::Kernel, )+
             $(_marker: std::marker::PhantomData<$( $gen_ident ),+>)?,
         }
@@ -173,7 +171,6 @@ macro_rules! ocl_program {
             fn new(
                 program: std::rc::Rc<opencl3::program::Program>,
                 $( $( $compile_param_name: $compile_param_ty, )* )?
-                $( $( $runtime_param_name: $runtime_param_ty, )* )?
             ) -> $crate::util::Result<Self> {
                 $(
                 let $kernel_name = $crate::util::create_kernel(program.as_ref(), stringify!($kernel_name))?;
@@ -181,7 +178,6 @@ macro_rules! ocl_program {
                 Ok(Self {
                     program,
                     $( $( $compile_param_name, )* )?
-                    $( $( $runtime_param_name, )* )?
                     $( $kernel_name,)+
                     _marker: std::marker::PhantomData,
                 })
@@ -190,7 +186,6 @@ macro_rules! ocl_program {
             pub fn create(
                 context: &opencl3::context::Context,
                 $( $( $compile_param_name: $compile_param_ty, )* )?
-                $( $( $runtime_param_name: $runtime_param_ty, )* )?
             ) -> $crate::util::Result<Self> {
                 Self::new(
                     Self::compile_program(
@@ -198,7 +193,6 @@ macro_rules! ocl_program {
                         $( $( &$compile_param_name, )* )?
                     )?,
                     $( $( $compile_param_name, )* )?
-                    $( $( $runtime_param_name, )* )?
                 )
             }
 
@@ -206,7 +200,6 @@ macro_rules! ocl_program {
                 context: &opencl3::context::Context,
                 cache: &$crate::util::ProgramCache,
                 $( $( $compile_param_name: $compile_param_ty, )* )?
-                $( $( $runtime_param_name: $runtime_param_ty, )* )?
             ) -> $crate::util::Result<Self> {
                 Self::new(
                     Self::get_or_compile_program(
@@ -215,25 +208,18 @@ macro_rules! ocl_program {
                         $( $( &$compile_param_name, )* )?
                     )?,
                     $( $( $compile_param_name, )* )?
-                    $( $( $runtime_param_name, )* )?
                 )
             }
 
             ocl_program!(
                 @impl_kernel_fn
-                fields = [$( $( $compile_param_name, )* )? $( $( $runtime_param_name, )* )?],
+                fields = [$( $( $compile_param_name, )* )?],
                 $($kernel_name { $($kernels_tt)+ },)+
             );
 
             $( $(
             pub(crate) fn $compile_param_name(&self) -> &$compile_param_ty {
                 &self.$compile_param_name
-            }
-            )* )?
-
-            $( $(
-            pub(crate) fn $runtime_param_name(&self) -> &$runtime_param_ty {
-                &self.$runtime_param_name
             }
             )* )?
 
@@ -251,8 +237,9 @@ macro_rules! ocl_program {
         @impl_kernel_fn
         fields = [$($field:ident),* $(,)?],
         $kernel_name:ident {
+            $(generic_args = <$( $gen_ident:ident : $gen_constraint:path ),+ $(,)?>,)?
             call_params = ($( $param:ident : $param_ty:ty ),+ $(,)?),
-            $(pre = { $( $pre:stmt )* },)?
+            $(pre = { $( let $custom_ident:ident = $custom_val:expr; )*},)?
             $(validation = $validation:block,)?
             inputs = [$( $input:ident ),+ $(,)?],
             outputs = [$( $output:ident ),+ $(,)?],
@@ -263,7 +250,7 @@ macro_rules! ocl_program {
         },
         $($rest:tt)*
     ) => {
-        pub(crate) fn $kernel_name(
+        pub(crate) fn $kernel_name $(<$( $gen_ident: $gen_constraint ),+>)? (
             &self,
             queue: &opencl3::command_queue::CommandQueue,
             $(
@@ -275,7 +262,7 @@ macro_rules! ocl_program {
             use rcann::tensor::*;
             use $crate::util::*;
             $(let $field = &self.$field;)?
-            $( $( $pre )* )?
+            $( $( let $custom_ident=$custom_val; )* )?
             $( $validation; )?
             let mut exec = ExecuteKernel::new(&self.$kernel_name);
             unsafe {
@@ -285,12 +272,14 @@ macro_rules! ocl_program {
             }
             exec.set_global_work_sizes(&[$( $global_dim ),*]);
             $(zero_or_more_expr!(, exec.set_local_work_sizes(&[$( $local_dim ),*]), $( $local_dim )*);)?
-            let deps = one_or_more_expr!(
-                ($( $input.deps() ),+),
-                EventList::concat([$( $input.deps() ),+]),
-                $( $input )+
-            );
-            exec.set_event_wait_list(deps.as_slice());
+            {
+                let deps = one_or_more_expr!(
+                    ($( $input.deps() ),+),
+                    EventList::concat([$( $input.deps() ),+]),
+                    $( $input )+
+                );
+                exec.set_event_wait_list(deps.as_slice());
+            }
             let event = EventList::from_event(unsafe {
                 exec.enqueue_nd_range(queue)
                     .expect(concat!("Failed to enqueue ", stringify!($kernel_name), " kernel"))
@@ -305,6 +294,8 @@ macro_rules! ocl_program {
             $( $rest )*
         );
     };
+
+
 
 }
 pub(crate) use ocl_program;

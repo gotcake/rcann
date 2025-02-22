@@ -1,67 +1,58 @@
 #[cfg(test)]
 mod test;
 
+use crate::kernels::BUFFER_BLOCK_SIZE;
 use crate::tensor::event_list::EventList;
-use crate::tensor::OclTensor2;
-use crate::util::Result;
-use crate::{format_c_defines, util, wrap_cl_error};
-use opencl3::command_queue::CommandQueue;
-use opencl3::context::Context;
-use opencl3::kernel::{ExecuteKernel, Kernel};
-use opencl3::program::Program;
-use opencl3::types::cl_uint;
-use rcann::tensor::{Dim2, ITensor};
+use crate::tensor::{OclFloat, OclTensor2};
+use crate::util::ocl_program;
+use opencl3::kernel::ExecuteKernel;
+use rcann::tensor::ITensor;
 
-#[derive(Debug)]
-pub struct TransposeKernel {
-    #[allow(unused)]
-    program: Program,
-    kernel: Kernel,
-}
-
-pub mod constants {
-    pub const BLOCK_SIZE: usize = 16;
-}
-
-impl TransposeKernel {
-    pub fn create(context: &Context) -> Result<Self> {
-        let mut code = format_c_defines!(
-            "BLOCK_SIZE" => constants::BLOCK_SIZE,
-        );
-        code.push_str(include_str!("transpose.cl"));
-        let program = util::create_program(context, code.as_ref(), "")?;
-        let kernel = util::create_kernel(&program, "transpose")?;
-        Ok(TransposeKernel { program, kernel })
-    }
-    pub fn transpose(&self, queue: &CommandQueue, input: &OclTensor2<f32>, output: &mut OclTensor2<f32>) -> Result<()> {
-        assert_eq!(input.dims(), &output.dims().transposed());
-        let &Dim2(rows, cols) = input.dims();
-        let &Dim2(out_buff_rows, out_buff_cols) = output.buffer_dims();
-        let in_row_stride = input.buffer_dims().cols();
-        //let m = next_multiple(in_rows.max(out_rows), constants::BLOCK_SIZE);
-        //let n = next_multiple(in_cols.max(out_cols), constants::BLOCK_SIZE);
-        let m = out_buff_cols;
-        let n = out_buff_rows;
-        assert_eq!(m % constants::BLOCK_SIZE, 0);
-        assert_eq!(n % constants::BLOCK_SIZE, 0);
-        let mut exec = ExecuteKernel::new(&self.kernel);
-        unsafe {
-            exec.set_arg(&(rows as cl_uint))
-                .set_arg(&(cols as cl_uint))
-                .set_arg(&(in_row_stride as cl_uint))
-                .set_arg(&(out_buff_rows as cl_uint))
-                .set_arg(&(out_buff_cols as cl_uint))
-                .set_arg(input.buffer())
-                .set_arg(output.buffer());
-        }
-        exec.set_event_wait_list(input.deps().as_slice());
-        exec.set_local_work_sizes(&[constants::BLOCK_SIZE, constants::BLOCK_SIZE])
-            .set_global_work_sizes(&[m, n]);
-        let kernel_evt = wrap_cl_error!(
-            unsafe { exec.enqueue_nd_range(queue) },
-            "Failed to enqueue transpose kernel"
-        )?;
-        output.set_deps(EventList::from_event(kernel_evt));
-        Ok(())
-    }
+ocl_program! {
+    name = TransposeProgram,
+    source = "transpose.cl",
+    generic_args = <T: OclFloat>,
+    compile_params = (
+        block_size: usize,
+    ),
+    validation = {
+        validate!(is_power_of_two(*block_size), "block_size must be a power of 2");
+        validate!(BUFFER_BLOCK_SIZE % *block_size == 0, "BUFFER_BLOCK_SIZE must be a multiple of block_size");
+    },
+    defines = {
+        FLOAT_BITS = T::BITS,
+        BLOCK_SIZE = block_size,
+    },
+    kernels = {
+        transpose {
+            call_params = (
+                input: &OclTensor2<T>,
+                output: &mut OclTensor2<T>,
+            ),
+            pre = {
+                let rows = input.dims().rows();
+                let cols = input.dims().cols();
+                let m = output.buffer_dims().cols();
+                let n = output.buffer_dims().rows();
+                let in_row_stride = input.buffer_dims().cols();
+            },
+            validation = {
+                assert_eq!(m % *block_size, 0);
+                assert_eq!(n % *block_size, 0);
+            },
+            inputs = [input],
+            outputs = [output],
+            kernel_args = [
+                &(rows as u32),
+                &(cols as u32),
+                &(in_row_stride as u32),
+                &(n as u32),
+                &(m as u32),
+                input.buffer(),
+                output.buffer(),
+            ],
+            global_dims = [m, n],
+            local_dims = [*block_size, *block_size],
+        },
+    },
 }

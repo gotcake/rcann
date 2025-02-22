@@ -1,171 +1,129 @@
 #[cfg(test)]
 mod test;
 
+use crate::kernels::BUFFER_BLOCK_SIZE;
 use crate::tensor::event_list::EventList;
-use crate::tensor::{OclTensor, OclTensor1, OclTensor2};
-use crate::{
-    format_c_defines,
-    util::{self, Result},
-    wrap_cl_error,
-};
-use opencl3::command_queue::CommandQueue;
-use opencl3::context::Context;
-use opencl3::kernel::{ExecuteKernel, Kernel};
-use opencl3::program::Program;
-use opencl3::types::cl_uint;
-use rcann::tensor::{Dim2, Dims, ITensor};
+use crate::tensor::{OclFloat, OclTensor, OclTensor1, OclTensor2};
+use crate::util::{ocl_program, VecWidth};
+use opencl3::kernel::ExecuteKernel;
+use rcann::tensor::{Dims, ITensor};
 
-#[derive(Debug)]
-pub struct GeneralKernels {
-    #[allow(unused)]
-    program: Program,
-    sigmoid: Kernel,
-    sigmoid_error: Kernel,
-    add_assign: Kernel,
-    column_sum: Kernel,
-}
-
-pub mod constants {
-    pub const VECTOR_PER_THREAD: usize = 1;
-    pub const VECTOR_WIDTH: usize = 16;
-    pub const UNIT_WIDTH: usize = VECTOR_WIDTH * VECTOR_PER_THREAD;
-    pub const FLOAT_BITS: usize = 32;
-}
-
-impl GeneralKernels {
-    pub fn new(context: &Context) -> Result<Self> {
-        let mut code = format_c_defines!(
-            "VECTOR_PER_THREAD" => constants::VECTOR_PER_THREAD,
-            "VECTOR_WIDTH" => constants::VECTOR_WIDTH,
-            "FLOAT_BITS" => constants::FLOAT_BITS,
-        );
-        code.push_str(include_str!("../types.cl"));
-        code.push_str("\n");
-        code.push_str(include_str!("general.cl"));
-        let program = util::create_program(context, code.as_ref(), "")?;
-        let sigmoid = util::create_kernel(&program, "sigmoid")?;
-        let sigmoid_error = util::create_kernel(&program, "sigmoid_error")?;
-        let add_assign = util::create_kernel(&program, "add_assign")?;
-        let column_sum = util::create_kernel(&program, "column_sum")?;
-        Ok(Self {
-            program,
-            sigmoid,
-            sigmoid_error,
-            add_assign,
-            column_sum,
-        })
-    }
-
-    pub fn sigmoid(
-        &self,
-        queue: &CommandQueue,
-        activation: &OclTensor2<f32>,
-        output: &mut OclTensor2<f32>,
-    ) -> Result<()> {
-        assert_eq!(activation.buffer_dims(), output.buffer_dims());
-        let n = activation.buffer_len();
-        assert_eq!(n % constants::UNIT_WIDTH, 0);
-        let mut exec = ExecuteKernel::new(&self.sigmoid);
-        unsafe {
-            exec.set_arg(activation.buffer()).set_arg(output.buffer());
-        }
-        exec.set_global_work_size(n / constants::UNIT_WIDTH);
-        exec.set_event_wait_list(activation.deps().as_slice());
-        let kernel_evt = wrap_cl_error!(
-            unsafe { exec.enqueue_nd_range(queue) },
-            "Failed to enqueue sigmoid kernel"
-        )?;
-        output.set_deps(EventList::from_event(kernel_evt));
-        Ok(())
-    }
-
-    pub fn sigmoid_error(
-        &self,
-        queue: &CommandQueue,
-        output: &OclTensor2<f32>,
-        error: &OclTensor2<f32>,
-        result: &mut OclTensor2<f32>,
-    ) -> Result<()> {
-        assert_eq!(result.buffer_dims(), output.buffer_dims());
-        assert_eq!(result.buffer_dims(), error.buffer_dims());
-        let n = output.buffer_len();
-        assert_eq!(n % constants::UNIT_WIDTH, 0);
-        let mut exec = ExecuteKernel::new(&self.sigmoid_error);
-        unsafe {
-            exec.set_arg(output.buffer())
-                .set_arg(error.buffer())
-                .set_arg(result.buffer());
-        }
-        exec.set_global_work_size(n / constants::UNIT_WIDTH);
-        let deps = EventList::concat([output.deps(), error.deps()]);
-        exec.set_event_wait_list(deps.as_slice());
-        let kernel_evt = wrap_cl_error!(
-            unsafe { exec.enqueue_nd_range(queue) },
-            "Failed to enqueue sigmoid_error kernel"
-        )?;
-        result.set_deps(EventList::from_event(kernel_evt));
-        Ok(())
-    }
-
-    pub fn add_assign<D: Dims>(
-        &self,
-        queue: &CommandQueue,
-        alpha: f32,
-        input: &OclTensor<f32, D>,
-        beta: f32,
-        output: &mut OclTensor<f32, D>,
-    ) -> Result<()> {
-        assert_eq!(input.buffer_dims(), output.buffer_dims());
-        let n = input.buffer_len();
-        assert_eq!(n % constants::UNIT_WIDTH, 0);
-        let mut exec = ExecuteKernel::new(&self.add_assign);
-        unsafe {
-            exec.set_arg(&alpha)
-                .set_arg(&beta)
-                .set_arg(input.buffer())
-                .set_arg(output.buffer());
-        }
-        exec.set_global_work_size(n / constants::UNIT_WIDTH);
-        let deps = EventList::concat([output.deps(), input.deps()]);
-        exec.set_event_wait_list(deps.as_slice());
-        let kernel_evt = wrap_cl_error!(
-            unsafe { exec.enqueue_nd_range(queue) },
-            "Failed to enqueue add_assign kernel"
-        )?;
-        output.set_deps(EventList::from_event(kernel_evt));
-        Ok(())
-    }
-
-    pub fn column_sum(
-        &self,
-        queue: &CommandQueue,
-        alpha: f32,
-        input: &OclTensor2<f32>,
-        beta: f32,
-        output: &mut OclTensor1<f32>,
-    ) -> Result<()> {
-        assert_eq!(input.buffer_dims().cols(), output.buffer_len());
-        let n = output.buffer_len();
-        assert_eq!(n % constants::VECTOR_WIDTH, 0);
-        let mut exec = ExecuteKernel::new(&self.column_sum);
-        let &Dim2(rows, cols) = input.dims();
-        unsafe {
-            exec.set_arg(&(rows as cl_uint))
-                .set_arg(&(cols as cl_uint))
-                .set_arg(&((n / constants::VECTOR_WIDTH) as cl_uint))
-                .set_arg(&alpha)
-                .set_arg(&beta)
-                .set_arg(input.buffer())
-                .set_arg(output.buffer());
-        }
-        exec.set_global_work_size(n / constants::VECTOR_WIDTH);
-        let deps = EventList::concat([output.deps(), input.deps()]);
-        exec.set_event_wait_list(deps.as_slice());
-        let kernel_evt = wrap_cl_error!(
-            unsafe { exec.enqueue_nd_range(queue) },
-            "Failed to enqueue column_sum kernel"
-        )?;
-        output.set_deps(EventList::from_event(kernel_evt));
-        Ok(())
-    }
+ocl_program! {
+    name = GeneralProgram,
+    source = "general.cl",
+    generic_args = <T: OclFloat>,
+    compile_params = (
+        vec_width: VecWidth,
+        vec_per_thread: usize,
+    ),
+    validation = {
+        validate!(BUFFER_BLOCK_SIZE % (*vec_width as usize * *vec_per_thread) == 0, "BUFFER_BLOCK_SIZE must be a multiple of vec_width * vec_per_thread");
+    },
+    defines = {
+        FLOAT_BITS = T::BITS,
+        VECTOR_WIDTH = *vec_width,
+        VECTOR_PER_THREAD = *vec_per_thread,
+    },
+    kernels = {
+        sigmoid {
+            call_params = (
+                activation: &OclTensor2<T>,
+                output: &mut OclTensor2<T>,
+            ),
+            pre = {
+                let unit_width = *vec_width as usize * *vec_per_thread;
+                let n = activation.buffer_len();
+            },
+            validation = {
+                assert_eq!(activation.buffer_dims(), output.buffer_dims());
+                assert_eq!(n % unit_width, 0);
+            },
+            inputs = [activation],
+            outputs = [output],
+            kernel_args = [
+                activation.buffer(),
+                output.buffer(),
+            ],
+            global_dims = [n / unit_width],
+        },
+        sigmoid_error {
+            call_params = (
+                output: &OclTensor2<T>,
+                error: &OclTensor2<T>,
+                result: &mut OclTensor2<T>,
+            ),
+            pre = {
+                let unit_width = *vec_width as usize * *vec_per_thread;
+                let n = output.buffer_len();
+            },
+            validation = {
+                assert_eq!(output.buffer_dims(), error.buffer_dims());
+                assert_eq!(output.buffer_dims(), result.buffer_dims());
+                assert_eq!(n % unit_width, 0);
+            },
+            inputs = [output, error],
+            outputs = [result],
+            kernel_args = [
+                output.buffer(),
+                error.buffer(),
+                result.buffer(),
+            ],
+            global_dims = [n / unit_width],
+        },
+        add_assign {
+            generic_args = <D: Dims>,
+            call_params = (
+                alpha: T,
+                input: &OclTensor<T, D>,
+                beta: T,
+                output: &mut OclTensor<T, D>,
+            ),
+            pre = {
+                let unit_width = *vec_width as usize * *vec_per_thread;
+                let n = input.buffer_len();
+            },
+            validation = {
+                assert_eq!(input.buffer_dims(), output.buffer_dims());
+                assert_eq!(n % unit_width, 0);
+            },
+            inputs = [input, output],
+            outputs = [output],
+            kernel_args = [
+                &alpha,
+                &beta,
+                input.buffer(),
+                output.buffer(),
+            ],
+            global_dims = [n / unit_width],
+        },
+        column_sum {
+            call_params = (
+                alpha: T,
+                input: &OclTensor2<T>,
+                beta: T,
+                output: &mut OclTensor1<T>,
+            ),
+            pre = {
+                let n = output.buffer_len();
+                let rows = input.dims().rows();
+                let cols = input.dims().cols();
+            },
+            validation = {
+                assert_eq!(input.buffer_dims().cols(), n);
+                assert_eq!(n % *vec_width as usize, 0);
+            },
+            inputs = [input, output],
+            outputs = [output],
+            kernel_args = [
+                &(rows as u32),
+                &(cols as u32),
+                &((n / *vec_width as usize) as u32),
+                &alpha,
+                &beta,
+                input.buffer(),
+                output.buffer(),
+            ],
+            global_dims = [n / *vec_width as usize],
+        },
+    },
 }

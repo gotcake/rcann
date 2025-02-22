@@ -1,57 +1,48 @@
 use crate::tensor::event_list::EventList;
-use crate::tensor::OclTensor;
-use crate::util::{self, next_multiple, Result};
-use crate::wrap_cl_error;
-use opencl3::command_queue::CommandQueue;
-use opencl3::context::Context;
-use opencl3::kernel::{ExecuteKernel, Kernel};
-use opencl3::program::Program;
-use opencl3::types::cl_uint;
+use crate::tensor::{OclFloat, OclTensor};
+use crate::util::{next_multiple, ocl_program};
+use opencl3::kernel::ExecuteKernel;
 use rcann::tensor::{Dim2, ITensor};
 
-#[derive(Debug)]
-pub struct ZeroPaddingKernel {
-    #[allow(unused)]
-    program: Program,
-    kernel: Kernel,
+ocl_program! {
+    name = ZeroPadProgram,
+    source = "zero_padding.cl",
+    generic_args = <T: OclFloat>,
+    compile_params = (
+        block_size: usize,
+    ),
+    validation = {
+        validate!(is_power_of_two(*block_size), "block_size must be a power of 2");
+        //validate!(BUFFER_BLOCK_SIZE % *block_size == 0, "BUFFER_BLOCK_SIZE must be a multiple of block_size");
+    },
+    defines = {
+        FLOAT_BITS = T::BITS,
+        BLOCK_SIZE = block_size,
+    },
+    kernels = {
+        zero_padding {
+            call_params = (
+                tensor: &OclTensor<T, Dim2>
+            ),
+            pre = {
+                let rows = tensor.dims().rows();
+                let cols = tensor.dims().cols();
+                let buff_rows = tensor.buffer_dims().rows();
+                let buff_cols = tensor.buffer_dims().cols();
+            },
+            inputs = [tensor],
+            outputs = [tensor],
+            kernel_args = [
+                &(rows as u32),
+                &(cols as u32),
+                &(buff_rows as u32),
+                &(buff_cols as u32),
+                tensor.buffer(),
+            ],
+            global_dims = [next_multiple(usize::max(buff_rows, buff_cols), *block_size)],
+            local_dims = [*block_size],
+        },
+    },
 }
 
-mod constants {
-    pub const BLOCK_SIZE: usize = 16;
-}
-
-impl ZeroPaddingKernel {
-    pub fn create(context: &Context) -> Result<Self> {
-        let program = util::create_program(context, include_str!("zero_padding.cl"), "")?;
-        let kernel = util::create_kernel(&program, "zero_padding")?;
-        Ok(Self { program, kernel })
-    }
-
-    // Note: Although tensor is not a &mut, this only kernel operates outside of the data range.
-    pub fn zero_padding(&self, queue: &CommandQueue, tensor: &OclTensor<f32, Dim2>) -> Result<()> {
-        if tensor.dims() == tensor.buffer_dims() {
-            return Ok(());
-        }
-        let &Dim2(rows, cols) = tensor.dims();
-        let &Dim2(buff_rows, buff_cols) = tensor.buffer_dims();
-
-        let mut exec = ExecuteKernel::new(&self.kernel);
-        unsafe {
-            exec.set_arg(&(rows as cl_uint))
-                .set_arg(&(cols as cl_uint))
-                .set_arg(&(buff_rows as cl_uint))
-                .set_arg(&(buff_cols as cl_uint))
-                .set_arg(tensor.buffer())
-        };
-        let n = next_multiple(buff_cols, constants::BLOCK_SIZE);
-        exec.set_local_work_size(constants::BLOCK_SIZE).set_global_work_size(n);
-        exec.set_event_wait_list(tensor.deps().as_slice());
-
-        let kernel_evt = wrap_cl_error!(
-            unsafe { exec.enqueue_nd_range(queue) },
-            "Failed to enqueue zero_padding kernel"
-        )?;
-        tensor.set_deps(EventList::from_event(kernel_evt));
-        Ok(())
-    }
-}
+// TODO: tests

@@ -1,13 +1,12 @@
 pub mod event_list;
 
-use crate::kernels;
 use crate::tensor::event_list::EventList;
 use crate::util::{next_multiple, Result};
 use crate::{util, wrap_cl_error};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::memory::{Buffer, CL_MEM_READ_WRITE};
-use opencl3::types::{cl_double, cl_float, cl_uint, CL_BLOCKING};
+use opencl3::types::CL_BLOCKING;
 use rcann::dtype::{DType, DTypeFloat};
 use rcann::tensor::{Dim1, Dim2, Dims, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
 use std::cell::{Ref, RefCell};
@@ -15,23 +14,16 @@ use std::ffi::c_void;
 use std::mem;
 use std::ops::Deref;
 use std::ptr;
+use crate::kernels::BUFFER_BLOCK_SIZE;
 
 pub unsafe trait OclDType: DType {}
-unsafe impl OclDType for cl_float {}
-unsafe impl OclDType for cl_double {}
-unsafe impl OclDType for cl_uint {}
+unsafe impl OclDType for f32 {}
+unsafe impl OclDType for f64 {}
+unsafe impl OclDType for u32 {}
 
 pub unsafe trait OclFloat: OclDType + DTypeFloat {}
-unsafe impl OclFloat for cl_float {}
-unsafe impl OclFloat for cl_double {}
-
-pub const BLOCK_SIZE: usize = util::max_usize(
-    kernels::general::constants::UNIT_WIDTH,
-    util::max_usize(
-        kernels::gemm::constants::TILE_SIZE,
-        kernels::transpose::constants::BLOCK_SIZE,
-    ),
-);
+unsafe impl OclFloat for f32 {}
+unsafe impl OclFloat for f64 {}
 
 pub struct OclTensor<T: OclDType, D: Dims> {
     buffer: Buffer<T>,
@@ -67,7 +59,7 @@ impl<T: OclDType, D: Dims> ITensor<D> for OclTensor<T, D> {
 }
 
 fn compute_buff_dims<D: Dims>(dims: &D) -> D {
-    dims.map_each(|size, _| next_multiple(size, BLOCK_SIZE))
+    dims.map_each(|size, _| next_multiple(size, BUFFER_BLOCK_SIZE))
 }
 
 impl<T: OclDType, D: Dims> OclTensor<T, D> {
@@ -318,69 +310,77 @@ impl<'a, T: OclDType, D: Dims> Deref for OclTensorRef<'a, T, D> {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::tensor::OclTensor;
-    use crate::util::{self, Result, TestContext};
-    use approx::assert_abs_diff_eq;
-    use rcann::tensor;
-    use rcann::tensor::{Dim2, Tensor, Tensor1, Tensor2};
 
-    #[test]
-    fn test_block_size_1d() -> Result<()> {
-        let TestContext { device, context, queue } = util::create_test_context()?;
-        let native: Tensor1<f32> = tensor![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.];
-        let ocl = OclTensor::from_native(&context, &queue, &native)?;
-        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
-        Ok(())
-    }
+macro_rules! impl_tests {
+    ($mod_name:ident, $ty:ty) => {
+        #[cfg(test)]
+        mod $mod_name {
+            use crate::tensor::OclTensor;
+            use crate::util::{self, Result, TestContext};
+            use approx::assert_abs_diff_eq;
+            use rcann::tensor;
+            use rcann::tensor::{Dim2, Tensor, Tensor1, Tensor2};
 
-    #[test]
-    fn test_non_block_size_1d() -> Result<()> {
-        let TestContext { device, context, queue } = util::create_test_context()?;
-        let native: Tensor1<f32> = tensor![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.];
-        let ocl = OclTensor::from_native(&context, &queue, &native)?;
-        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
-        Ok(())
-    }
+            #[test]
+            fn test_block_size_1d() -> Result<()> {
+                let TestContext { device, context, queue } = util::create_test_context()?;
+                let native: Tensor1<$ty> = tensor![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.];
+                let ocl = OclTensor::from_native(&context, &queue, &native)?;
+                assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+                Ok(())
+            }
 
-    #[test]
-    fn test_block_size_2d() -> Result<()> {
-        let TestContext { device, context, queue } = util::create_test_context()?;
-        let m = 16;
-        let n = 16;
-        let native: Tensor2<f32> = Tensor::from_vec((0..(m * n)).into_iter().map(|n| n as f32).collect(), Dim2(m, n));
-        let ocl = OclTensor::from_native(&context, &queue, &native)?;
-        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
-        Ok(())
-    }
+            #[test]
+            fn test_non_block_size_1d() -> Result<()> {
+                let TestContext { device, context, queue } = util::create_test_context()?;
+                let native: Tensor1<$ty> = tensor![0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.];
+                let ocl = OclTensor::from_native(&context, &queue, &native)?;
+                assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+                Ok(())
+            }
 
-    #[test]
-    fn test_non_block_size_2d() -> Result<()> {
-        let TestContext { device, context, queue } = util::create_test_context()?;
-        let m = 14;
-        let n = 13;
-        let native: Tensor2<f32> = Tensor::from_vec((0..(m * n)).into_iter().map(|n| n as f32).collect(), Dim2(m, n));
-        let ocl = OclTensor::from_native(&context, &queue, &native)?;
-        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
-        Ok(())
-    }
+            #[test]
+            fn test_block_size_2d() -> Result<()> {
+                let TestContext { device, context, queue } = util::create_test_context()?;
+                let m = 16;
+                let n = 16;
+                let native: Tensor2<$ty> = Tensor::from_vec((0..(m * n)).into_iter().map(|n| n as $ty).collect(), Dim2(m, n));
+                let ocl = OclTensor::from_native(&context, &queue, &native)?;
+                assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+                Ok(())
+            }
 
-    #[test]
-    fn test_3x2() -> Result<()> {
-        let TestContext { device, context, queue } = util::create_test_context()?;
-        let native: Tensor2<f32> = tensor![[1., 2., 3.], [4., 5., 6.]];
-        let ocl = OclTensor::from_native(&context, &queue, &native)?;
-        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
-        Ok(())
-    }
+            #[test]
+            fn test_non_block_size_2d() -> Result<()> {
+                let TestContext { device, context, queue } = util::create_test_context()?;
+                let m = 14;
+                let n = 13;
+                let native: Tensor2<$ty> = Tensor::from_vec((0..(m * n)).into_iter().map(|n| n as $ty).collect(), Dim2(m, n));
+                let ocl = OclTensor::from_native(&context, &queue, &native)?;
+                assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+                Ok(())
+            }
 
-    #[test]
-    fn test_2x3() -> Result<()> {
-        let TestContext { device, context, queue } = util::create_test_context()?;
-        let native: Tensor2<f32> = tensor![[1., 2.], [3., 4.], [5., 6.]];
-        let ocl = OclTensor::from_native(&context, &queue, &native)?;
-        assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
-        Ok(())
+            #[test]
+            fn test_3x2() -> Result<()> {
+                let TestContext { device, context, queue } = util::create_test_context()?;
+                let native: Tensor2<$ty> = tensor![[1., 2., 3.], [4., 5., 6.]];
+                let ocl = OclTensor::from_native(&context, &queue, &native)?;
+                assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+                Ok(())
+            }
+
+            #[test]
+            fn test_2x3() -> Result<()> {
+                let TestContext { device, context, queue } = util::create_test_context()?;
+                let native: Tensor2<$ty> = tensor![[1., 2.], [3., 4.], [5., 6.]];
+                let ocl = OclTensor::from_native(&context, &queue, &native)?;
+                assert_abs_diff_eq!(native, ocl.as_native(&queue)?);
+                Ok(())
+            }
+        }
     }
 }
+
+impl_tests!(tests_f32, f32);
+impl_tests!(tests_f64, f64);

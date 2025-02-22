@@ -8,19 +8,20 @@ ocl_program! {
     source = "softmax2.cl",
     generic_args = <T: OclFloat>,
     compile_params = (
-        vec_width: u8,
+        vec_width: VecWidth,
         cols: usize,
         row_stride: usize,
     ),
     validation = {
-        validate!(is_valid_vec_width(*vec_width), "Invalid vector width");
+        validate!(*cols > 0, "cols must be positive");
+        validate!(*row_stride > 0, "row_stride must be positive");
         validate!(*row_stride % *vec_width as usize == 0, "Misaligned row stride");
     },
     defines = {
         FLOAT_BITS = T::BITS,
-        VEC_WIDTH = vec_width,
-        COLS = cols,
-        ROW_STRIDE = row_stride,
+        VEC_WIDTH = *vec_width as usize,
+        COLS = *cols,
+        ROW_STRIDE = *row_stride,
         VEC_COLS = *cols / *vec_width as usize,
         VEC_COLS_REM = *cols % *vec_width as usize,
     },

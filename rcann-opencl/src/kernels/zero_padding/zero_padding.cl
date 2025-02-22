@@ -1,7 +1,7 @@
 __kernel void zero_padding(
         const uint ROWS, const uint COLS,
         const uint BUFF_ROWS, const uint BUFF_COLS,
-        __global float* matrix
+        __global real* matrix
 ) {
     const uint n = get_global_id(0);
     if (n < BUFF_ROWS) {

@@ -1,25 +1,26 @@
 use crate::backend::OpenCLBackend;
-use crate::kernels::mse::MeanSquaredError;
 use crate::kernels::softmax::Softmax;
 use crate::wrap_cl_error;
 use rcann::backend::BackendOther;
 use rcann::tensor::{Dim1, Dim2, Dims, ITensor};
+use crate::kernels::mse::MSEProgram;
+use crate::tensor::OclFloat;
 
 #[allow(unused)]
-impl BackendOther for OpenCLBackend {
+impl<F: OclFloat> BackendOther for OpenCLBackend<F> {
     fn column_sum(&self, alpha: Self::Float, a: &Self::Tensor<Dim2>, beta: Self::Float, b: &mut Self::Tensor<Dim1>) {
-        self.general_kernels.column_sum(&self.queue, alpha, a, beta, b).unwrap();
+        self.general_program.column_sum(&self.queue, alpha, a, beta, b);
     }
 
     fn add_assign<D>(&self, alpha: Self::Float, a: &Self::Tensor<D>, beta: Self::Float, b: &mut Self::Tensor<D>)
     where
         D: Dims,
     {
-        self.general_kernels.add_assign(&self.queue, alpha, a, beta, b).unwrap();
+        self.general_program.add_assign(&self.queue, alpha, a, beta, b);
     }
 
     fn sigmoid(&self, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>) {
-        self.general_kernels.sigmoid(&self.queue, activation, output).unwrap();
+        self.general_program.sigmoid(&self.queue, activation, output);
     }
 
     fn sigmoid_error(
@@ -28,9 +29,7 @@ impl BackendOther for OpenCLBackend {
         out_error: &Self::Tensor<Dim2>,
         result: &mut Self::Tensor<Dim2>,
     ) {
-        self.general_kernels
-            .sigmoid_error(&self.queue, output, out_error, result)
-            .unwrap();
+        self.general_program.sigmoid_error(&self.queue, output, out_error, result)
     }
 
     fn relu(&self, leak: Self::Float, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>) {
@@ -51,7 +50,7 @@ impl BackendOther for OpenCLBackend {
         Softmax::get_or_create(
             &self.context,
             &self.cache,
-            16,
+            self.vec_width,
             output.dims().cols(),
             output.buffer_dims().cols(),
         )
@@ -75,10 +74,10 @@ impl BackendOther for OpenCLBackend {
         result: &mut Self::Tensor<Dim1>,
         result_deriv: &mut Self::Tensor<Dim2>,
     ) {
-        MeanSquaredError::get_or_create(
+        MSEProgram::get_or_create(
             &self.context,
             &self.cache,
-            16,
+            self.vec_width,
             output.dims().cols(),
             output.buffer_dims().cols(),
         )
@@ -106,8 +105,7 @@ impl BackendOther for OpenCLBackend {
         output: &Self::Tensor<Dim2>,
         expected: &Self::Tensor<Dim2>,
     ) {
-        self.scoring_kernels
-            .accum_multiclass_confusion_matrix(&self.context, &self.queue, matrix, output, expected)
-            .unwrap();
+        self.scoring_program
+            .accum_multiclass_confusion_matrix(&self.context, &self.queue, matrix, output, expected);
     }
 }
