@@ -1,7 +1,9 @@
 use crate::backend::OpenCLBackend;
+use crate::kernels::mse::MeanSquaredError;
+use crate::kernels::softmax::Softmax;
 use crate::wrap_cl_error;
 use rcann::backend::BackendOther;
-use rcann::tensor::{Dim1, Dim2, Dims};
+use rcann::tensor::{Dim1, Dim2, Dims, ITensor};
 
 #[allow(unused)]
 impl BackendOther for OpenCLBackend {
@@ -46,8 +48,15 @@ impl BackendOther for OpenCLBackend {
     }
 
     fn softmax(&self, activation: &Self::Tensor<Dim2>, output: &mut Self::Tensor<Dim2>) {
-        self.softmax_kernel
-            .softmax(&self.queue, activation, output)
+        Softmax::get_or_create(
+            &self.context,
+            &self.cache,
+            16,
+            output.dims().cols(),
+            output.buffer_dims().cols(),
+        )
+        .unwrap()
+        .softmax(&self.queue, activation, output)
     }
 
     fn softmax_error(
@@ -66,9 +75,15 @@ impl BackendOther for OpenCLBackend {
         result: &mut Self::Tensor<Dim1>,
         result_deriv: &mut Self::Tensor<Dim2>,
     ) {
-        self.mse_kernel
-            .mean_squared_error(&self.queue, output, expected, result, result_deriv)
-            .unwrap();
+        MeanSquaredError::get_or_create(
+            &self.context,
+            &self.cache,
+            16,
+            output.dims().cols(),
+            output.buffer_dims().cols(),
+        )
+        .unwrap()
+        .mean_squared_error(&self.queue, output, expected, result, result_deriv);
     }
 
     fn flush(&self) {

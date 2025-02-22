@@ -2,9 +2,8 @@
 mod test;
 
 use crate::tensor::event_list::EventList;
-use crate::tensor::OclTensor;
-use crate::util::Result;
-use crate::{format_c_defines, util, wrap_cl_error};
+use crate::tensor::{OclFloat, OclTensor};
+use crate::util::*;
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::kernel::{ExecuteKernel, Kernel};
@@ -35,8 +34,8 @@ impl GemmKernel {
         code.push_str(include_str!("../types.cl"));
         code.push_str("\n");
         code.push_str(include_str!("gemm.cl"));
-        let program = util::create_program(context, code.as_ref(), "")?;
-        let kernel = util::create_kernel(&program, "gemm")?;
+        let program = create_program(context, code.as_ref(), "")?;
+        let kernel = create_kernel(&program, "gemm")?;
         Ok(GemmKernel { program, kernel })
     }
 
@@ -75,4 +74,59 @@ impl GemmKernel {
         c.set_deps(EventList::from_event(kernel_evt));
         Ok(())
     }
+}
+
+ocl_program! {
+    name = GeMM,
+    source = "gemm.cl",
+    generic_args = <T: OclFloat>,
+    compile_params = (
+        vec_width: u8,
+        tile_size: usize,
+    ),
+    validation = {
+        validate!(is_valid_vec_width(*vec_width), "Invalid vector width");
+        validate!(*tile_size % *vec_width as usize == 0, "tile_size must be a multiple of vec_width");
+    },
+    defines = {
+        FLOAT_BITS = T::BITS,
+        VECTOR_WIDTH = vec_width,
+        TILE_SIZE = tile_size,
+    },
+    kernels = {
+        gemm {
+            call_params = (
+                alpha: f32,
+                a: &OclTensor<f32, Dim2>,
+                b: &OclTensor<f32, Dim2>,
+                beta: f32,
+                c: &mut OclTensor<f32, Dim2>,
+            ),
+            pre = {
+                let &Dim2(m, k) = a.buffer_dims();
+                let &Dim2(_, n) = b.buffer_dims();
+            },
+            validation = {
+                assert_eq!(b.buffer_dims(), &Dim2(k, n));
+                assert_eq!(c.buffer_dims(), &Dim2(m, n));
+                assert_eq!(m % *tile_size, 0);
+                assert_eq!(n % *tile_size, 0);
+                assert_eq!(k % *tile_size, 0);
+            },
+            inputs = [a, b, c],
+            outputs = [c],
+            kernel_args = [
+                &(m as u32),
+                &(k as u32),
+                &(n as u32),
+                &alpha,
+                a.buffer(),
+                b.buffer(),
+                &beta,
+                c.buffer(),
+            ],
+            global_dims = [m, n / *vec_width as usize],
+            local_dims = [*tile_size, *tile_size / *vec_width as usize],
+        },
+    },
 }

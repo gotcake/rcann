@@ -36,14 +36,22 @@ impl MatrixMultiplication for OpenCLBackend {
             if beta != Self::Float::ZERO {
                 self.zero_padding_kernel.zero_padding(&self.queue, c)?;
             }
-            self.gemm_kernel.gemm(
+            self.gemm_kernel2.gemm(
                 &self.queue,
                 alpha,
                 a_transpose.as_ref().unwrap_or(a),
                 b_transpose.as_ref().unwrap_or(b),
                 beta,
                 c,
-            )?;
+            );
+            /*self.gemm_kernel.gemm(
+                &self.queue,
+                alpha,
+                a_transpose.as_ref().unwrap_or(a),
+                b_transpose.as_ref().unwrap_or(b),
+                beta,
+                c,
+            )?;*/
             Ok(())
         });
     }

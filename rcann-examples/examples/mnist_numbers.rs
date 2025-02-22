@@ -3,7 +3,7 @@ use rand::SeedableRng;
 use rcann::activation::ActivationFn;
 use rcann::backend::CpuBackend;
 use rcann::net::initializer::RandomNetInitializer;
-use rcann::net::layer::FullyConnectedLayerParams;
+use rcann::net::layer::DenseLayerParams;
 use rcann::net::NetBuilder;
 use rcann::scoring::MulticlassScorer;
 use rcann::tensor::TensorBase;
@@ -28,15 +28,15 @@ pub fn main() {
 
     let mut net = NetBuilder::new(backend, 784)
         .with_initializer(RandomNetInitializer::seed_from_u64(0xf1234567))
-        .with_layer(FullyConnectedLayerParams {
+        .with_layer(DenseLayerParams {
             size: 128,
             activation_fn: ActivationFn::Sigmoid,
         })
-        .with_layer(FullyConnectedLayerParams {
+        .with_layer(DenseLayerParams {
             size: 32,
             activation_fn: ActivationFn::Sigmoid,
         })
-        .with_layer(FullyConnectedLayerParams {
+        .with_layer(DenseLayerParams {
             size: 10,
             activation_fn: ActivationFn::Sigmoid,
         })

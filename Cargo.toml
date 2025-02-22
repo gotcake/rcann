@@ -2,8 +2,8 @@
 
 members = [
     'rcann',
-    'rcann_examples',
-    'rcann_opencl'
+    'rcann-examples',
+    'rcann-opencl'
 ]
 
 [profile.dev]

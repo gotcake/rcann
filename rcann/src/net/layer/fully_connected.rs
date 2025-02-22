@@ -6,13 +6,13 @@ use crate::tensor::{Dim1, Dim2, ITensor, Tensor1, Tensor2};
 use std::fmt::{Debug, Formatter};
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FullyConnectedLayerParams {
+pub struct DenseLayerParams {
     pub size: usize,
     pub activation_fn: ActivationFn,
 }
 
-impl<B: Backend> LayerParams<B> for FullyConnectedLayerParams {
-    type Layer = FullyConnectedLayer<B>;
+impl<B: Backend> LayerParams<B> for DenseLayerParams {
+    type Layer = DenseLayer<B>;
 
     fn create_layer(
         &self,
@@ -33,7 +33,7 @@ impl<B: Backend> LayerParams<B> for FullyConnectedLayerParams {
             Dim2(output_size, input_size),
         );
         let biases = Tensor1::from_vec_1d(initializer.get_biases(LayerType::FullyConnected, output_size, layer_idx));
-        FullyConnectedLayer {
+        DenseLayer {
             input_size,
             output_size,
             weights: backend.new_tensor_from_native(weights),
@@ -45,13 +45,13 @@ impl<B: Backend> LayerParams<B> for FullyConnectedLayerParams {
     }
 }
 
-impl Into<ConcreteLayerParams> for FullyConnectedLayerParams {
+impl Into<ConcreteLayerParams> for DenseLayerParams {
     fn into(self) -> ConcreteLayerParams {
         ConcreteLayerParams::FullyConnected(self)
     }
 }
 
-pub struct FullyConnectedLayer<B: Backend> {
+pub struct DenseLayer<B: Backend> {
     input_size: usize,
     output_size: usize,
     weights: B::Tensor<Dim2>,
@@ -61,9 +61,9 @@ pub struct FullyConnectedLayer<B: Backend> {
     activation_fn: ActivationFn,
 }
 
-impl<B: Backend> FullyConnectedLayer<B> {
+impl<B: Backend> DenseLayer<B> {
     pub fn new(backend: &B, input_size: usize, output_size: usize, activation_fn: ActivationFn) -> Self {
-        FullyConnectedLayer {
+        DenseLayer {
             input_size,
             output_size,
             weights: backend.new_tensor_exact(Dim2(output_size, input_size)),
@@ -91,7 +91,7 @@ impl<B: Backend> TrainingTensors<B> {
     }
 }
 
-impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
+impl<B: Backend> Layer<B> for DenseLayer<B> {
     fn forward(&mut self, backend: &B, input: B::TensorRef<'_, Dim2>, output: &mut B::Tensor<Dim2>) {
         let num_rows = input.dims().rows();
 
@@ -201,7 +201,7 @@ impl<B: Backend> Layer<B> for FullyConnectedLayer<B> {
     }
 }
 
-impl<B: Backend> Debug for FullyConnectedLayer<B> {
+impl<B: Backend> Debug for DenseLayer<B> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FullyConnectedLayer")
             .field("size", &self.output_size)

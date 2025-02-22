@@ -7,7 +7,7 @@ use std::fmt::Debug;
 
 use crate::tensor::Dim2;
 pub use concrete::{ConcreteLayer, ConcreteLayerParams};
-pub use fully_connected::{FullyConnectedLayer, FullyConnectedLayerParams};
+pub use fully_connected::{DenseLayer, DenseLayerParams};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum LayerType {

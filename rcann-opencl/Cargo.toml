@@ -1,5 +1,5 @@
 [package]
-name = "rcann_opencl"
+name = "rcann-opencl"
 version = "0.1.0"
 edition = "2021"
 

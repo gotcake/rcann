@@ -1,4 +1,4 @@
-use super::{FullyConnectedLayer, FullyConnectedLayerParams, Layer, LayerParams};
+use super::{DenseLayer, DenseLayerParams, Layer, LayerParams};
 use crate::backend::Backend;
 use crate::net::initializer::NetInitializer;
 use crate::tensor::Dim2;
@@ -10,7 +10,7 @@ use std::fmt::{Debug, Formatter};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConcreteLayerParams {
-    FullyConnected(FullyConnectedLayerParams),
+    FullyConnected(DenseLayerParams),
 }
 
 impl<B: Backend> LayerParams<B> for ConcreteLayerParams {
@@ -31,7 +31,7 @@ impl<B: Backend> LayerParams<B> for ConcreteLayerParams {
 }
 
 pub enum ConcreteLayer<B: Backend> {
-    FullyConnected(FullyConnectedLayer<B>),
+    FullyConnected(DenseLayer<B>),
 }
 
 impl<B: Backend> ConcreteLayer<B> {

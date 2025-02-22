@@ -5,6 +5,7 @@ use std::ops::Neg;
 pub unsafe trait DType: 'static + Sized + Copy + Num + NumAssignOps + Display + Debug {
     const ZERO: Self;
     const ONE: Self;
+    const BITS: u8;
     fn from_f64(val: f64) -> Self;
     fn from_usize(val: usize) -> Self;
     fn to_usize(&self) -> usize;
@@ -16,10 +17,11 @@ pub unsafe trait DTypeSInt: DType + Neg<Output = Self> {}
 pub unsafe trait DTypeFloat: DType + Float {}
 
 macro_rules! impl_dtype {
-    ($ty:ty, $one:expr, $zero:expr $(,$other_trait:ty)*) => {
+    ($ty:ty, $one:literal, $zero:literal $(,$other_trait:ty)*) => {
         unsafe impl DType for $ty {
             const ZERO: Self = $zero;
             const ONE: Self = $one;
+            const BITS: u8 = (std::mem::size_of::<$ty>() * 8) as u8;
             #[inline]
             fn from_f64(val: f64) -> Self {
                 val as $ty

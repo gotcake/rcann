@@ -1,12 +1,12 @@
 use std::fmt::{Debug, Display, Formatter, Write};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Dim0;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Dim1(pub usize);
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Dim2(pub usize, pub usize);
 
 impl Dim2 {
@@ -24,7 +24,7 @@ impl Dim2 {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Dim3(pub usize, pub usize, pub usize);
 
 pub unsafe trait Dims: 'static + Copy + Debug + Eq + Display {

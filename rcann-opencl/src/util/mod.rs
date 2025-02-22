@@ -1,10 +1,9 @@
-mod kernel_macros;
 mod cache;
+mod kernel_macros;
 
-use std::collections::hash_map::DefaultHasher;
-use std::fmt::{Display, Formatter, Write};
-use std::hash::{Hash, Hasher};
 use crate::error::Error;
+pub(crate) use cache::*;
+pub(crate) use kernel_macros::*;
 use opencl3::command_queue::{CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE};
 use opencl3::context::Context;
 use opencl3::device::{get_all_devices, Device, CL_DEVICE_TYPE_GPU};
@@ -12,9 +11,10 @@ use opencl3::kernel::Kernel;
 use opencl3::program::Program;
 use opencl3::types::cl_event;
 use rcann::tensor::{Dim3, Dims};
+use std::collections::hash_map::DefaultHasher;
+use std::fmt::{Display, Formatter, Write};
+use std::hash::{Hash, Hasher};
 use std::mem;
-pub(crate) use kernel_macros::*;
-pub(crate) use cache::*;
 
 #[repr(u8)]
 #[derive(Debug, Hash, Eq, PartialEq, Clone, Copy)]
@@ -43,7 +43,7 @@ impl TryFrom<u8> for VecWidth {
             4 => Ok(FOUR),
             8 => Ok(EIGHT),
             16 => Ok(SIXTEEN),
-            _ => Err(Error::ConversionError(format!("Invalid vector width: {value}")))
+            _ => Err(Error::ConversionError(format!("Invalid vector width: {value}"))),
         }
     }
 }
@@ -53,6 +53,13 @@ pub(crate) struct FixedWidth2DProgramArgs {
     pub vec_width: VecWidth,
     pub cols: usize,
     pub row_stride: usize,
+}
+
+pub(crate) fn is_valid_vec_width(value: u8) -> bool {
+    match value {
+        1 | 2 | 4 | 8 | 16 => true,
+        _ => false,
+    }
 }
 
 #[inline]
@@ -82,6 +89,7 @@ macro_rules! wrap_cl_error {
         ($res).map_err(|err| $crate::error::Error::from_cl_err(err, format!($($arg)*)))
     }
 }
+pub(crate) use wrap_cl_error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

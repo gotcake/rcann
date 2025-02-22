@@ -1,14 +1,15 @@
 mod matmul;
 mod other;
 
-use crate::kernels::gemm::GemmKernel;
+use crate::kernels::gemm::{GeMM, GemmKernel};
 use crate::kernels::general::GeneralKernels;
 use crate::kernels::mse::MSEKernel;
 use crate::kernels::scoring::ScoringKernels;
+use crate::kernels::softmax::Softmax;
 use crate::kernels::transpose::TransposeKernel;
 use crate::kernels::zero_padding::ZeroPaddingKernel;
 use crate::tensor::OclTensor;
-use crate::util::{self, FixedWidth2DProgramArgs, Result, VecWidth};
+use crate::util::{self, FixedWidth2DProgramArgs, ProgramCache, Result, VecWidth};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::device::Device;
@@ -16,7 +17,6 @@ use opencl3::types::cl_float;
 use rcann::backend::{Backend, TensorOps, TensorTyped};
 use rcann::tensor::{Dims, DimsMore, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
 use std::fmt::Debug;
-use crate::kernels::softmax::Softmax;
 
 #[derive(Debug)]
 #[allow(unused)]
@@ -24,14 +24,14 @@ pub struct OpenCLBackend {
     device: Device,
     context: Context,
     queue: CommandQueue,
+    cache: ProgramCache,
     max_batch_size: usize,
     gemm_kernel: GemmKernel,
+    gemm_kernel2: GeMM<f32>,
     transpose_kernel: TransposeKernel,
     zero_padding_kernel: ZeroPaddingKernel,
     general_kernels: GeneralKernels,
-    mse_kernel: MSEKernel,
     scoring_kernels: ScoringKernels,
-    softmax_kernel: Softmax<f32>,
 }
 
 impl OpenCLBackend {
@@ -43,24 +43,25 @@ impl OpenCLBackend {
         let context = util::get_context(&device)?;
         let queue = util::create_queue(&context)?;
         let gemm_kernel = GemmKernel::new(&context)?;
+        let gemm_kernel2 = GeMM::create(&context, 16, 16)?;
         let transpose_kernel = TransposeKernel::create(&context)?;
         let zero_padding_kernel = ZeroPaddingKernel::create(&context)?;
         let general_kernels = GeneralKernels::new(&context)?;
         let mse_kernel = MSEKernel::new(&context)?;
         let scoring_kernels = ScoringKernels::create(&context)?;
-        let softmax_kernel = Softmax::create(&context, VecWidth::SIXTEEN)?;
+        let cache = ProgramCache::new();
         Ok(OpenCLBackend {
             device,
             context,
             queue,
             max_batch_size,
             gemm_kernel,
+            gemm_kernel2,
             transpose_kernel,
             zero_padding_kernel,
             general_kernels,
-            mse_kernel,
+            cache,
             scoring_kernels,
-            softmax_kernel,
         })
     }
     #[inline]

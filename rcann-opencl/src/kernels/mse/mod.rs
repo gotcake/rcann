@@ -2,15 +2,15 @@
 mod test;
 
 use crate::tensor::event_list::EventList;
-use crate::tensor::{OclTensor1, OclTensor2};
-use crate::util::{next_multiple, Result};
-use crate::{format_c_defines, util, wrap_cl_error};
+use crate::tensor::{OclFloat, OclTensor1, OclTensor2};
+use crate::util::*;
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::kernel::{ExecuteKernel, Kernel};
 use opencl3::program::Program;
 use opencl3::types::cl_uint;
 use rcann::tensor::{Dim2, ITensor};
+use std::num::NonZeroUsize;
 
 #[derive(Debug)]
 pub struct MSEKernel {
@@ -33,8 +33,8 @@ impl MSEKernel {
         code.push_str(include_str!("../types.cl"));
         code.push_str("\n");
         code.push_str(include_str!("mean_squared_error.cl"));
-        let program = util::create_program(context, code.as_ref(), "")?;
-        let kernel = util::create_kernel(&program, "mean_squared_error")?;
+        let program = create_program(context, code.as_ref(), "")?;
+        let kernel = create_kernel(&program, "mean_squared_error")?;
         Ok(Self { program, kernel })
     }
 
@@ -77,3 +77,54 @@ impl MSEKernel {
         Ok(())
     }
 }
+
+ocl_program!(
+    name = MeanSquaredError,
+    source = "mean_squared_error2.cl",
+    generic_args = <T: OclFloat>,
+    compile_params = (
+        vec_width: u8,
+        cols: usize,
+        row_stride: usize,
+    ),
+    validation = {
+        validate!(is_valid_vec_width(*vec_width), "Invalid vector width");
+        validate!(*row_stride % *vec_width as usize == 0, "Misaligned row stride");
+    },
+    defines = {
+        FLOAT_BITS = T::BITS,
+        VEC_WIDTH = vec_width,
+        COLS = cols,
+        ROW_STRIDE = row_stride,
+        VEC_COLS = *cols / *vec_width as usize,
+        VEC_COLS_REM = *cols % *vec_width as usize,
+    },
+    kernels = {
+        mean_squared_error {
+            call_params = (
+                output: &OclTensor2<T>,
+                expected: &OclTensor2<T>,
+                result: &mut OclTensor1<T>,
+                result_deriv: &mut OclTensor2<T>,
+            ),
+            validation = {
+                assert_eq!(output.dims(), expected.dims());
+                assert_eq!(output.dims(), result_deriv.dims());
+                assert_eq!(result.dims().major(), output.dims().rows());
+                assert_eq!(output.buffer_dims().cols(), *row_stride);
+                assert_eq!(expected.buffer_dims().cols(), *row_stride);
+                assert_eq!(result_deriv.buffer_dims().cols(), *row_stride);
+            },
+            inputs = [output, expected],
+            outputs = [result, result_deriv],
+            kernel_args = [
+                &(output.dims().rows() as u32),
+                output.buffer(),
+                expected.buffer(),
+                result.buffer(),
+                result_deriv.buffer(),
+            ],
+            global_dims = [next_multiple(output.dims().rows(), 16)],
+        },
+    },
+);
