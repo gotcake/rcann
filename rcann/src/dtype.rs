@@ -17,7 +17,7 @@ pub unsafe trait DTypeSInt: DType + Neg<Output = Self> {}
 pub unsafe trait DTypeFloat: DType + Float {}
 
 macro_rules! impl_dtype {
-    ($ty:ty, $one:literal, $zero:literal $(,$other_trait:ty)*) => {
+    ($ty:ty, $one:expr, $zero:expr $(,$other_trait:ty)*) => {
         unsafe impl DType for $ty {
             const ZERO: Self = $zero;
             const ONE: Self = $one;
@@ -55,3 +55,33 @@ impl_dtype!(u16, 1, 0, DTypeUInt);
 impl_dtype!(u32, 1, 0, DTypeUInt);
 impl_dtype!(u64, 1, 0, DTypeUInt);
 impl_dtype!(usize, 1, 0, DTypeUInt);
+
+#[cfg(feature = "half")]
+unsafe impl DType for half::f16 {
+    const ZERO: Self = half::f16::ZERO;
+    const ONE: Self = half::f16::ONE;
+    const BITS: u8 = 16;
+
+    #[inline]
+    fn from_f64(val: f64) -> Self {
+        half::f16::from_f64(val)
+    }
+
+    #[inline]
+    fn from_usize(val: usize) -> Self {
+        half::f16::from_f64(val as f64)
+    }
+
+    #[inline]
+    fn to_usize(&self) -> usize {
+        half::f16::to_f64(*self) as usize
+    }
+
+    #[inline]
+    fn to_f64(&self) -> f64 {
+        half::f16::to_f64(*self)
+    }
+}
+
+#[cfg(feature = "half")]
+unsafe impl DTypeFloat for half::f16 {}

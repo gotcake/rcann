@@ -11,6 +11,11 @@ derive_builder = "0.11.2"
 once_cell = "1.16.0"
 opencl3 = "0.9.1"
 rcann = { path = "../rcann", features=["approx"] }
+half = { version = "2.4.1", features = ["num-traits", "serde", "rand_distr"], optional = true }
+
+[features]
+default = []
+half = ["dep:half", "rcann/half"]
 
 [dev-dependencies]
 approx = "0.5.1"

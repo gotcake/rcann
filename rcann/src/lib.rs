@@ -17,3 +17,5 @@ extern crate rand_distr;
 extern crate serde;
 #[cfg(feature = "serde")]
 extern crate serde_json;
+#[cfg(feature = "half")]
+extern crate half;

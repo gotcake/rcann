@@ -17,11 +17,15 @@ use std::ptr;
 use crate::kernels::BUFFER_BLOCK_SIZE;
 
 pub unsafe trait OclDType: DType {}
+#[cfg(feature = "half")]
+unsafe impl OclDType for half::f16 {}
 unsafe impl OclDType for f32 {}
 unsafe impl OclDType for f64 {}
 unsafe impl OclDType for u32 {}
 
 pub unsafe trait OclFloat: OclDType + DTypeFloat {}
+#[cfg(feature = "half")]
+unsafe impl OclFloat for half::f16 {}
 unsafe impl OclFloat for f32 {}
 unsafe impl OclFloat for f64 {}
 

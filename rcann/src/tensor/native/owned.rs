@@ -228,3 +228,17 @@ macro_rules! tensor {
         $crate::tensor::Tensor1::from_vec_1d(vec![$($x,)*])
     };
 }
+
+#[cfg(feature = "half")]
+#[macro_export]
+macro_rules! tensor_f16 {
+    ($([$([$($x:expr),* $(,)*]),+ $(,)*]),+ $(,)*) => {
+        $crate::tensor::Tensor3::from_vec_3d(vec![$([$([$(half::f16::from_f32($x),)*],)*],)*])
+    };
+    ($([$($x:expr),* $(,)*]),+ $(,)*) => {
+        $crate::tensor::Tensor2::from_vec_2d(vec![$([$(half::f16::from_f32($x),)*],)*])
+    };
+    ($($x:expr),* $(,)*) => {
+        $crate::tensor::Tensor1::from_vec_1d(vec![$(half::f16::from_f32($x),)*])
+    };
+}
