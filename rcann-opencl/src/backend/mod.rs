@@ -2,14 +2,13 @@ mod matmul;
 mod other;
 
 use crate::kernels::gemm::GeMMProgram;
-use crate::kernels::scoring::{ScoringKernels, ScoringProgram};
+use crate::kernels::scoring::ScoringProgram;
 use crate::kernels::transpose::TransposeProgram;
 use crate::tensor::{OclFloat, OclTensor};
 use crate::util::{self, ProgramCache, Result, VecWidth};
 use opencl3::command_queue::CommandQueue;
 use opencl3::context::Context;
 use opencl3::device::Device;
-use opencl3::types::cl_float;
 use rcann::backend::{Backend, TensorOps, TensorTyped};
 use rcann::tensor::{Dims, DimsMore, ITensor, Tensor, TensorBase, TensorBaseMut, TensorView};
 use std::fmt::Debug;

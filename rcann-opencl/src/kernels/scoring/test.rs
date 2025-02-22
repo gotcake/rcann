@@ -2,7 +2,7 @@ macro_rules! impl_tests {
     ($mod_name: ident, $ty:ty) => {
         mod $mod_name {
 
-            use crate::kernels::scoring::{ScoringKernels, ScoringProgram};
+            use crate::kernels::scoring::ScoringProgram;
             use crate::tensor::OclTensor2;
             use crate::util;
             use crate::util::{Result, TestContext};
